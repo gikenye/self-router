@@ -88,7 +88,7 @@ export default function Home() {
     displayToast("Opening Self App...");
   };
 
-  const handleSuccessfulVerification = async (result?: any) => {
+  const handleSuccessfulVerification = async () => {
     console.log('Verification successful! Fetching disclosed data...');
     
     try {

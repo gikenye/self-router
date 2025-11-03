@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       attestationId: verificationData[0],
       userIdentifier: Number(verificationData[1]),
       nullifier: verificationData[2].toString(),
-      forbiddenCountriesListPacked: verificationData[3].map((n: any) => Number(n)),
+      forbiddenCountriesListPacked: verificationData[3].map((n: bigint) => Number(n)),
       nationality: verificationData[7],
       olderThan: Number(verificationData[11]),
       ofac: verificationData[12],
