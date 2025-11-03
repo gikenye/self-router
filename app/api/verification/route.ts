@@ -17,13 +17,14 @@ export async function GET(request: NextRequest) {
   try {
     const provider = new ethers.JsonRpcProvider(CELO_RPC_URL);
     
+    // Filter by requestor address (topic 1 in DisclosureVerified event)
     const filter = {
       address: SELF_CONTRACT_ADDRESS,
       topics: [
         DISCLOSURE_VERIFIED_EVENT_SIGNATURE,
-        ethers.zeroPadValue(userAddress, 32)
+        ethers.zeroPadValue(userAddress, 32) // requestor address
       ],
-      fromBlock: -1000,
+      fromBlock: -10000,
       toBlock: 'latest'
     };
 
