@@ -113,7 +113,7 @@ export async function POST(
       userAddress,
       [depositId]
     );
-    const attachReceipt = await attachTx.wait();
+    await attachTx.wait();
 
     // Record deposit on leaderboard
     const leaderboard = new ethers.Contract(

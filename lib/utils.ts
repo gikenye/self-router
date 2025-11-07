@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { DEFAULT_RPC_URL } from "./constants";
+import { DEFAULT_RPC_URL, VAULTS } from "./constants";
 
 /**
  * Create an ethers provider using the configured RPC URL
@@ -120,11 +120,7 @@ export function formatAmountForDisplay(
  * Detect asset type from vault address and return decimals
  */
 export function getAssetDecimalsFromVault(vaultAddress: string): number {
-  const { VAULTS } = require("./constants");
-
-  for (const [asset, config] of Object.entries(VAULTS) as Array<
-    [string, any]
-  >) {
+  for (const config of Object.values(VAULTS)) {
     if (config.address.toLowerCase() === vaultAddress.toLowerCase()) {
       return config.decimals;
     }

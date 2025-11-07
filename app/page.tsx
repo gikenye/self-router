@@ -27,15 +27,15 @@ export default function Home() {
     try {
       const app = new SelfAppBuilder({
         version: 2,
-        appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Minilend",
-        scope: process.env.NEXT_PUBLIC_SELF_SCOPE || "minilend-app",
+        appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Questpanda",
+        scope: process.env.NEXT_PUBLIC_SELF_SCOPE || "the-questapp",
         endpoint: `${process.env.NEXT_PUBLIC_SELF_ENDPOINT}`,
         logoBase64:
           "https://i.postimg.cc/mrmVf9hm/self.png", // url of a png image, base64 is accepted but not recommended
         userId: userId,
         endpointType: "celo",
         userIdType: "hex", // use 'hex' for ethereum address or 'uuid' for uuidv4
-        userDefinedData: "Enjoy saving together with Minilend!", // optional field to pass any additional info
+        userDefinedData: "participate in fun ads and get paid!", // optional field to pass any additional info
         disclosures: {
         // what you want to verify from users' identity
           minimumAge: 18,
