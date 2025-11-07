@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { CONTRACTS, LEADERBOARD_ABI } from "../../../lib/constants";
+import {
+  CONTRACTS,
+  LEADERBOARD_ABI,
+  LEADERBOARD_DECIMALS,
+} from "../../../lib/constants";
 import {
   createProvider,
   isValidAddress,
@@ -40,10 +44,38 @@ export async function GET(
 
       const score = await leaderboard.getUserScore(userAddress);
       const scoreString = score.toString();
+
+      // Get user rank by searching through top list
+      let rank: number | null = null;
+      const topLength = await leaderboard.getTopListLength();
+
+      if (score > BigInt(0)) {
+        // Search for user in top list to get their rank
+        for (let i = 0; i < Number(topLength) && i < 1000; i++) {
+          // Limit search to prevent timeout
+          try {
+            const topUser = await leaderboard.topList(i);
+            if (topUser.toLowerCase() === userAddress.toLowerCase()) {
+              rank = i + 1;
+              break;
+            }
+          } catch (error) {
+            // If we can't access the topList at this index, break
+            break;
+          }
+        }
+      }
+
       return NextResponse.json({
         userAddress,
         score: scoreString,
-        formattedScore: formatAmountForDisplay(scoreString, 18, 2), // Assuming 18 decimals for leaderboard scores
+        formattedScore: formatAmountForDisplay(
+          scoreString,
+          LEADERBOARD_DECIMALS,
+          2
+        ), // Using cUSD decimals for leaderboard scores
+        rank,
+        totalUsers: topLength.toString(),
       });
     }
 
@@ -88,7 +120,11 @@ export async function GET(
           rank: startIdx + index + 1,
           address,
           score: scoreString,
-          formattedScore: formatAmountForDisplay(scoreString, 18, 2), // Assuming 18 decimals for leaderboard scores
+          formattedScore: formatAmountForDisplay(
+            scoreString,
+            LEADERBOARD_DECIMALS,
+            2
+          ), // Using cUSD decimals for leaderboard scores
         };
       }
     );

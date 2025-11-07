@@ -52,7 +52,12 @@ export const LEADERBOARD_ABI = [
   "function getUserScore(address user) external view returns (uint256)",
   "function getTopListLength() external view returns (uint256)",
   "function getTopRange(uint256 start, uint256 end) external view returns (address[] users, uint256[] userScores)",
+  "function scores(address user) external view returns (uint256)",
+  "function topList(uint256 index) external view returns (address)",
 ];
 
 // Default RPC URL
 export const DEFAULT_RPC_URL = "https://forno.celo.org";
+
+// Leaderboard score decimals - based on cUSD (18 decimals) as the base scoring unit
+export const LEADERBOARD_DECIMALS = 18;

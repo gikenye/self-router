@@ -46,6 +46,8 @@ export interface UserScore {
   userAddress: string;
   score: string;
   formattedScore: string;
+  rank: number | null; // null if user not in top list
+  totalUsers: string;
 }
 
 export interface LeaderboardEntry {
