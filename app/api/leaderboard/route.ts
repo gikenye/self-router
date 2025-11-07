@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { CONTRACTS, LEADERBOARD_ABI } from "../../../lib/constants";
-import { createProvider, isValidAddress } from "../../../lib/utils";
+import {
+  createProvider,
+  isValidAddress,
+  formatAmountForDisplay,
+} from "../../../lib/utils";
 import type {
   UserScore,
   LeaderboardResponse,
@@ -35,9 +39,11 @@ export async function GET(
       }
 
       const score = await leaderboard.getUserScore(userAddress);
+      const scoreString = score.toString();
       return NextResponse.json({
         userAddress,
-        score: score.toString(),
+        score: scoreString,
+        formattedScore: formatAmountForDisplay(scoreString, 18, 2), // Assuming 18 decimals for leaderboard scores
       });
     }
 
@@ -76,11 +82,15 @@ export async function GET(
     const [users, scores] = await leaderboard.getTopRange(startIdx, endIdx);
 
     const leaderboardData: LeaderboardEntry[] = users.map(
-      (address: string, index: number) => ({
-        rank: startIdx + index + 1,
-        address,
-        score: scores[index].toString(),
-      })
+      (address: string, index: number) => {
+        const scoreString = scores[index].toString();
+        return {
+          rank: startIdx + index + 1,
+          address,
+          score: scoreString,
+          formattedScore: formatAmountForDisplay(scoreString, 18, 2), // Assuming 18 decimals for leaderboard scores
+        };
+      }
     );
 
     const response: LeaderboardResponse = {

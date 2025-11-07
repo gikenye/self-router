@@ -12,6 +12,7 @@ export interface AllocateResponse {
   depositId: string;
   quicksaveGoalId: string;
   shares: string;
+  formattedShares: string;
   allocationTxHash: string;
 }
 
@@ -44,12 +45,14 @@ export interface QuicksaveGoalResponse {
 export interface UserScore {
   userAddress: string;
   score: string;
+  formattedScore: string;
 }
 
 export interface LeaderboardEntry {
   rank: number;
   address: string;
   score: string;
+  formattedScore: string;
 }
 
 export interface LeaderboardResponse {
@@ -57,6 +60,38 @@ export interface LeaderboardResponse {
   start: number;
   limit: number;
   data: LeaderboardEntry[];
+}
+
+export interface JoinGoalRequest {
+  goalId: string;
+  userAddress: string;
+  depositTxHash: string;
+  asset: keyof typeof import("./constants").VAULTS;
+}
+
+export interface JoinGoalResponse {
+  success: boolean;
+  goalId: string;
+  depositId: string;
+  amount: string;
+  formattedAmount: string;
+  attachTxHash: string;
+}
+
+export interface CreateGoalRequest {
+  vaultAddress: string;
+  targetAmount: string;
+  targetDate?: string;
+  name: string;
+  creatorAddress: string;
+}
+
+export interface CreateGoalResponse {
+  success: boolean;
+  goalId: string;
+  creator: string;
+  txHash: string;
+  shareLink: string;
 }
 
 export interface ErrorResponse {

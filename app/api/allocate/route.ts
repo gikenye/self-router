@@ -13,6 +13,7 @@ import {
   waitForTransactionReceipt,
   findEventInLogs,
   isValidAddress,
+  formatAmountForDisplay,
 } from "../../../lib/utils";
 import type {
   AllocateRequest,
@@ -175,6 +176,7 @@ export async function POST(
       depositId,
       quicksaveGoalId: quicksaveId.toString(),
       shares,
+      formattedShares: formatAmountForDisplay(shares, vaultConfig.decimals, 4),
       allocationTxHash: allocateTx.hash,
     });
   } catch (error) {

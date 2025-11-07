@@ -51,7 +51,7 @@ export async function waitForTransactionReceipt(
  * Find event in transaction logs
  */
 export function findEventInLogs(
-  logs: ethers.Log[],
+  logs: readonly ethers.Log[],
   contract: ethers.Contract,
   eventName: string
 ): ethers.LogDescription | null {
@@ -74,4 +74,62 @@ export function findEventInLogs(
  */
 export function isValidAddress(address: string): boolean {
   return ethers.isAddress(address);
+}
+
+/**
+ * Format token amount from wei to human-readable format
+ */
+export function formatTokenAmount(amountWei: string, decimals: number): string {
+  try {
+    const formatted = ethers.formatUnits(amountWei, decimals);
+    // Remove unnecessary trailing zeros and decimal point if needed
+    const cleaned = parseFloat(formatted).toString();
+    return cleaned;
+  } catch (error) {
+    console.error("Error formatting amount:", error);
+    return amountWei; // Return original if formatting fails
+  }
+}
+
+/**
+ * Format amount with proper decimal places for display
+ */
+export function formatAmountForDisplay(
+  amountWei: string,
+  decimals: number,
+  displayDecimals = 2
+): string {
+  try {
+    const formatted = ethers.formatUnits(amountWei, decimals);
+    const number = parseFloat(formatted);
+
+    // For very small amounts, show more decimal places
+    if (number < 0.01 && number > 0) {
+      return number.toFixed(6);
+    }
+
+    // For normal amounts, use specified decimal places
+    return number.toFixed(displayDecimals);
+  } catch (error) {
+    console.error("Error formatting amount for display:", error);
+    return amountWei;
+  }
+}
+
+/**
+ * Detect asset type from vault address and return decimals
+ */
+export function getAssetDecimalsFromVault(vaultAddress: string): number {
+  const { VAULTS } = require("./constants");
+
+  for (const [asset, config] of Object.entries(VAULTS) as Array<
+    [string, any]
+  >) {
+    if (config.address.toLowerCase() === vaultAddress.toLowerCase()) {
+      return config.decimals;
+    }
+  }
+
+  // Default to 18 decimals if vault not found
+  return 18;
 }
