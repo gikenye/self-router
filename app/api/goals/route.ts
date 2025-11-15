@@ -41,10 +41,42 @@ export async function GET(
         );
       }
 
-      const quicksaveId = await goalManager.getQuicksaveGoal(
+      let quicksaveId = await goalManager.getQuicksaveGoal(
         vaultAddress,
         userAddress
       );
+
+      // Auto-create quicksave goal if it doesn't exist using createQuicksaveGoalFor
+      if (quicksaveId.toString() === "0") {
+        try {
+          const { createBackendWallet, findEventInLogs } = await import("../../../lib/utils");
+          const backendWallet = createBackendWallet(provider);
+          const goalManagerWithSigner = new ethers.Contract(
+            CONTRACTS.GOAL_MANAGER,
+            GOAL_MANAGER_ABI,
+            backendWallet
+          );
+          
+          const createTx = await goalManagerWithSigner.createQuicksaveGoalFor(
+            userAddress,
+            vaultAddress
+          );
+          const createReceipt = await createTx.wait();
+
+          const goalEvent = findEventInLogs(
+            createReceipt.logs,
+            goalManagerWithSigner,
+            "GoalCreated"
+          );
+          
+          if (goalEvent) {
+            quicksaveId = goalEvent.args.goalId;
+          }
+        } catch (error) {
+          console.error("Failed to auto-create quicksave goal:", error);
+        }
+      }
+
       return NextResponse.json({
         quicksaveGoalId: quicksaveId.toString(),
       });

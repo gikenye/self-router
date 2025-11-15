@@ -38,6 +38,7 @@ export const VAULT_ABI = [
 export const GOAL_MANAGER_ABI = [
   "function getQuicksaveGoal(address vault, address user) external view returns (uint256)",
   "function createGoal(address vault, uint256 targetAmount, uint256 targetDate, string calldata metadataURI) external returns (uint256)",
+  "function createQuicksaveGoalFor(address user, address vault) external returns (uint256)",
   "function attachDeposits(uint256 goalId, uint256[] calldata depositIds) external",
   "function attachDepositsOnBehalf(uint256 goalId, address owner, uint256[] calldata depositIds) external",
   "function goals(uint256) external view returns (uint256 id, address creator, address vault, uint256 targetAmount, uint256 targetDate, string metadataURI, uint256 createdAt, bool cancelled, bool completed)",
