@@ -5,12 +5,13 @@ export interface AllocateRequest {
   userAddress: string;
   amount: string;
   txHash: string;
+  targetGoalId?: string;
 }
 
 export interface AllocateResponse {
   success: boolean;
   depositId: string;
-  quicksaveGoalId: string;
+  goalId: string;
   shares: string;
   formattedShares: string;
   allocationTxHash: string;
@@ -98,6 +99,57 @@ export interface CreateGoalResponse {
 
 export interface ErrorResponse {
   error: string;
+}
+
+// User positions types
+export interface UserDeposit {
+  depositId: string;
+  vault: string;
+  asset: string;
+  amountWei: string;
+  amountUSD: string;
+  sharesWei: string;
+  sharesUSD: string;
+  lockTier: string;
+  lockedUntil: string;
+  unlocked: boolean;
+  timeRemaining: number | null;
+}
+
+export interface UserGoal {
+  goalId: string;
+  vault: string;
+  asset: string;
+  targetAmountWei: string;
+  targetAmountUSD: string;
+  targetDate: string;
+  totalValueWei: string;
+  totalValueUSD: string;
+  percentBps: string;
+  progressPercent: string;
+  isQuicksave: boolean;
+  attachmentCount: string;
+}
+
+export interface AssetBalance {
+  asset: string;
+  vault: string;
+  totalAmountWei: string;
+  totalAmountUSD: string;
+  totalSharesWei: string;
+  totalSharesUSD: string;
+  depositCount: number;
+}
+
+export interface UserPositionsResponse {
+  userAddress: string;
+  totalValueUSD: string;
+  leaderboardScore: string;
+  formattedLeaderboardScore: string;
+  leaderboardRank: number | null;
+  assetBalances: AssetBalance[];
+  deposits: UserDeposit[];
+  goals: UserGoal[];
 }
 
 // Utility types

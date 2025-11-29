@@ -26,7 +26,8 @@ export async function POST(
 ): Promise<NextResponse<AllocateResponse | ErrorResponse>> {
   try {
     const body: AllocateRequest = await request.json();
-    const { asset, userAddress, amount, txHash } = body;
+    console.log("Allocate request body:", body);
+    const { asset, userAddress, amount, txHash, targetGoalId } = body;
 
     // Validate required fields
     if (!asset || !userAddress || !amount || !txHash) {
@@ -63,6 +64,7 @@ export async function POST(
 
     // Wait for transaction receipt
     const receipt = await waitForTransactionReceipt(provider, txHash);
+    console.log("Transaction receipt:", receipt);
     if (!receipt || !receipt.status) {
       return NextResponse.json(
         { error: "Transaction not found or failed" },
@@ -72,13 +74,18 @@ export async function POST(
 
     // Verify transfer to vault
     const transferTopic = ethers.id("Transfer(address,address,uint256)");
+    console.log("Looking for transfer topic:", transferTopic);
+    console.log("Vault config:", vaultConfig);
     const vaultTransfer = receipt.logs.find((log: ethers.Log) => {
+      console.log("Checking log:", log.address, log.topics[0]);
       if (log.topics[0] !== transferTopic) return false;
       if (log.address.toLowerCase() !== vaultConfig.asset.toLowerCase())
         return false;
       const to = ethers.getAddress("0x" + log.topics[2].slice(26));
+      console.log("Parsed to address:", to);
       return to.toLowerCase() === vaultConfig.address.toLowerCase();
     });
+    console.log("Vault transfer found:", !!vaultTransfer);
 
     if (!vaultTransfer) {
       return NextResponse.json(
@@ -87,27 +94,13 @@ export async function POST(
       );
     }
 
-    // Allocate deposit in vault
+    // Parse deposit event from the original transaction
     const vault = new ethers.Contract(
       vaultConfig.address,
       VAULT_ABI,
       backendWallet
     );
-    const txHashBytes32 = ethers.keccak256(txHash);
-
-    const allocateTx = await vault.allocateOnrampDeposit(
-      userAddress,
-      amount,
-      txHashBytes32
-    );
-    const allocateReceipt = await allocateTx.wait();
-
-    // Parse deposit event
-    const depositEvent = findEventInLogs(
-      allocateReceipt.logs,
-      vault,
-      "OnrampDeposit"
-    );
+    const depositEvent = findEventInLogs(receipt.logs, vault, "Deposited");
     if (!depositEvent) {
       return NextResponse.json(
         { error: "Failed to parse deposit event" },
@@ -118,45 +111,89 @@ export async function POST(
     const depositId = depositEvent.args.depositId.toString();
     const shares = depositEvent.args.shares.toString();
 
-    // Handle quicksave goal
-    const goalManager = new ethers.Contract(
-      CONTRACTS.GOAL_MANAGER,
-      GOAL_MANAGER_ABI,
-      backendWallet
-    );
-    let quicksaveId = await goalManager.getQuicksaveGoal(
-      vaultConfig.address,
-      userAddress
-    );
-
-    if (quicksaveId.toString() === "0") {
-      // Create new quicksave goal
-      const createTx = await goalManager.createGoal(
-        vaultConfig.address,
-        0,
-        0,
-        "quicksave"
+    // Handle goal attachment
+    let attachedGoalId: bigint = BigInt(0);
+    try {
+      const goalManagerRead = new ethers.Contract(
+        CONTRACTS.GOAL_MANAGER,
+        GOAL_MANAGER_ABI,
+        provider
       );
-      const createReceipt = await createTx.wait();
-
-      const goalEvent = findEventInLogs(
-        createReceipt.logs,
-        goalManager,
-        "GoalCreated"
+      const goalManagerWrite = new ethers.Contract(
+        CONTRACTS.GOAL_MANAGER,
+        GOAL_MANAGER_ABI,
+        backendWallet
       );
-      if (!goalEvent) {
-        return NextResponse.json(
-          { error: "Failed to create quicksave goal" },
-          { status: 500 }
+
+      // Use target goal if specified, otherwise default to quicksave
+      if (targetGoalId) {
+        attachedGoalId = BigInt(targetGoalId);
+        console.log(`Using target goal: ${targetGoalId}`);
+      } else {
+        // Get quicksave goal directly from contract
+        attachedGoalId = await goalManagerRead.getQuicksaveGoal(
+          vaultConfig.address,
+          userAddress
         );
+
+        if (attachedGoalId.toString() === "0") {
+          // Create quicksave goal
+          const createTx = await goalManagerWrite.createQuicksaveGoalFor(
+            userAddress,
+            vaultConfig.address
+          );
+          const createReceipt = await createTx.wait();
+
+          const goalEvent = findEventInLogs(
+            createReceipt.logs,
+            goalManagerWrite,
+            "GoalCreated"
+          );
+          if (goalEvent) {
+            attachedGoalId = goalEvent.args.goalId;
+          }
+        }
+        console.log(`Using quicksave goal: ${attachedGoalId}`);
       }
 
-      quicksaveId = goalEvent.args.goalId;
+      if (attachedGoalId !== BigInt(0)) {
+        // Verify goal exists before attaching
+        try {
+          const goal = await goalManagerRead.goals(attachedGoalId);
+          if (goal.id.toString() !== "0") {
+            // Try to attach deposit
+            try {
+              const attachTx = await goalManagerWrite.attachDepositsOnBehalf(
+                attachedGoalId,
+                userAddress,
+                [depositId]
+              );
+              await attachTx.wait();
+              console.log(`Successfully attached deposit ${depositId} to goal ${attachedGoalId}`);
+            } catch (attachError) {
+              const errorMsg = attachError instanceof Error ? attachError.message : String(attachError);
+              if (errorMsg.includes("already unlocked") || errorMsg.includes("Not found")) {
+                console.log(`Cannot attach deposit ${depositId}: ${errorMsg}`);
+              } else {
+                throw attachError;
+              }
+            }
+          } else {
+            console.log(`Goal ${attachedGoalId} not found, skipping attachment`);
+            attachedGoalId = BigInt(0);
+          }
+        } catch (goalError) {
+          console.log(`Goal ${attachedGoalId} validation failed:`, goalError instanceof Error ? goalError.message : String(goalError));
+          attachedGoalId = BigInt(0);
+        }
+      }
+    } catch (error) {
+      console.log(
+        "Failed to handle goal attachment, skipping:",
+        error instanceof Error ? error.message : String(error)
+      );
+      attachedGoalId = BigInt(0);
     }
-
-    // Attach deposit to goal
-    const attachTx = await goalManager.attachDeposits(quicksaveId, [depositId]);
-    await attachTx.wait();
 
     // Record score on leaderboard
     const leaderboard = new ethers.Contract(
@@ -174,10 +211,10 @@ export async function POST(
     return NextResponse.json({
       success: true,
       depositId,
-      quicksaveGoalId: quicksaveId.toString(),
+      goalId: attachedGoalId.toString(),
       shares,
       formattedShares: formatAmountForDisplay(shares, vaultConfig.decimals, 4),
-      allocationTxHash: allocateTx.hash,
+      allocationTxHash: txHash,
     });
   } catch (error) {
     console.error("Allocation error:", error);

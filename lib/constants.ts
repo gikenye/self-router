@@ -31,6 +31,7 @@ export const VAULTS = {
 // Contract ABIs
 export const VAULT_ABI = [
   "function allocateOnrampDeposit(address user, uint256 amount, bytes32 txHash) external returns (uint256)",
+  "function deposits(uint256) external view returns (address owner, uint256 amount, uint256 shares, uint256 lockTier, uint256 lockedUntil, bool unlocked)",
   "event OnrampDeposit(address indexed user, uint256 indexed depositId, uint256 amount, uint256 shares, bytes32 indexed txHash)",
   "event Deposited(address indexed user, uint256 indexed depositId, uint256 amount, uint256 shares, uint256 lockTier)",
 ];
