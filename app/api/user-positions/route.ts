@@ -124,10 +124,11 @@ export async function GET(
             try {
               const attachment = await goalManager.attachmentAt(quicksaveId, i);
               if (attachment.owner.toLowerCase() === userAddress.toLowerCase()) {
-                const deposit = await vault.deposits(attachment.depositId);
-                const currentTime = Math.floor(Date.now() / 1000);
-                const timeRemaining = deposit.unlocked ? null : 
-                  Math.max(0, Number(deposit.lockedUntil) - currentTime);
+                try {
+                  const deposit = await vault.deposits(attachment.depositId);
+                  const currentTime = Math.floor(Date.now() / 1000);
+                  const timeRemaining = deposit.unlocked ? null : 
+                    Math.max(0, Number(deposit.lockedUntil) - currentTime);
 
                 const userDeposit: UserDeposit = {
                   depositId: attachment.depositId.toString(),
@@ -149,25 +150,28 @@ export async function GET(
                   timeRemaining,
                 };
 
-                deposits.push(userDeposit);
+                  deposits.push(userDeposit);
 
-                // Aggregate asset balances
-                if (!assetBalances[assetName]) {
-                  assetBalances[assetName] = {
-                    asset: assetName,
-                    vault: vaultConfig.address,
-                    totalAmountWei: "0",
-                    totalAmountUSD: "0",
-                    totalSharesWei: "0",
-                    totalSharesUSD: "0",
-                    depositCount: 0,
-                  };
+                  // Aggregate asset balances
+                  if (!assetBalances[assetName]) {
+                    assetBalances[assetName] = {
+                      asset: assetName,
+                      vault: vaultConfig.address,
+                      totalAmountWei: "0",
+                      totalAmountUSD: "0",
+                      totalSharesWei: "0",
+                      totalSharesUSD: "0",
+                      depositCount: 0,
+                    };
+                  }
+
+                  const balance = assetBalances[assetName];
+                  balance.totalAmountWei = (BigInt(balance.totalAmountWei) + BigInt(deposit.amount)).toString();
+                  balance.totalSharesWei = (BigInt(balance.totalSharesWei) + BigInt(deposit.shares)).toString();
+                  balance.depositCount++;
+                } catch (depositError) {
+                  console.error(`Deposit ${attachment.depositId} not found, skipping`);
                 }
-
-                const balance = assetBalances[assetName];
-                balance.totalAmountWei = (BigInt(balance.totalAmountWei) + BigInt(deposit.amount)).toString();
-                balance.totalSharesWei = (BigInt(balance.totalSharesWei) + BigInt(deposit.shares)).toString();
-                balance.depositCount++;
               }
             } catch (error) {
               console.error(`Error processing attachment ${i} for goal ${quicksaveId}:`, error);

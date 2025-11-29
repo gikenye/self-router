@@ -86,13 +86,14 @@ export async function POST(
     const provider = createProvider();
     const backendWallet = createBackendWallet(provider);
 
-    // Create goal
+    // Create goal with specified creator using createGoalFor
     const goalManager = new ethers.Contract(
       CONTRACTS.GOAL_MANAGER,
       GOAL_MANAGER_ABI,
       backendWallet
     );
-    const tx = await goalManager.createGoal(
+    const tx = await goalManager.createGoalFor(
+      creatorAddress,
       vaultAddress,
       targetAmount,
       parsedTargetDate,

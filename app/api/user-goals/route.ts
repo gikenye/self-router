@@ -85,7 +85,7 @@ export async function GET(
         const attachmentCount = await goalManager.attachmentCount(goalId);
 
         // Find vault config for this goal
-        const vaultConfig = Object.entries(VAULTS).find(([_, config]) => 
+        const vaultConfig = Object.entries(VAULTS).find(([, config]) => 
           config.address.toLowerCase() === goal.vault.toLowerCase()
         );
         if (!vaultConfig) return;
@@ -101,8 +101,12 @@ export async function GET(
           try {
             const attachment = await goalManager.attachmentAt(goalId, i);
             if (attachment.owner.toLowerCase() === userAddress.toLowerCase()) {
-              const deposit = await vault.deposits(attachment.depositId);
-              userBalance += BigInt(deposit.amount);
+              try {
+                const deposit = await vault.deposits(attachment.depositId);
+                userBalance += BigInt(deposit.amount);
+              } catch (depositError) {
+                console.error(`Deposit ${attachment.depositId} not found, skipping`);
+              }
             }
           } catch (error) {
             console.error(`Error processing attachment ${i}:`, error);
@@ -148,7 +152,7 @@ export async function GET(
     };
 
     // Check quicksave goals for each vault
-    for (const [assetName, vaultConfig] of Object.entries(VAULTS)) {
+    for (const [, vaultConfig] of Object.entries(VAULTS)) {
       const quicksaveId = await goalManager.getQuicksaveGoal(
         vaultConfig.address,
         userAddress
@@ -160,18 +164,17 @@ export async function GET(
 
     // Check for regular goals (scan recent goal IDs)
     try {
-      for (let goalId = 90; goalId >= 80; goalId--) {
+      for (let goalId = 95; goalId >= 80; goalId--) {
         try {
           const goal = await goalManager.goals(goalId);
           
           // Include goal if:
           // 1. User is the creator
-          // 2. Goal name contains user address (for goals created via API)
-          // 3. User has attachments to this goal
+          // 2. User has attachments to this goal
           let isUserGoal = goal.creator.toLowerCase() === userAddress.toLowerCase();
           
           if (!isUserGoal) {
-            // Check if this goal was created for this user (simple heuristic)
+            // Check if user has attachments to this goal
             const attachmentCount = await goalManager.attachmentCount(goalId);
             if (Number(attachmentCount) > 0) {
               const maxCheck = Math.min(Number(attachmentCount), 10);
@@ -200,14 +203,7 @@ export async function GET(
       console.error("Error scanning for user goals:", error);
     }
 
-    // For now, manually include goal 85 (Buenos Aires) for this specific user
-    if (userAddress.toLowerCase() === "0xaB12E94861B69ff2696b8365f6a0c992A38da2c8".toLowerCase()) {
-      try {
-        await processGoal("85", false, "Buenos Aires");
-      } catch (error) {
-        console.error("Error adding Buenos Aires goal:", error);
-      }
-    }
+
 
     const response: UserGoalsResponse = {
       userAddress,
