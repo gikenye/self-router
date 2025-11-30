@@ -25,12 +25,29 @@ export async function POST(
   request: NextRequest
 ): Promise<NextResponse<AllocateResponse | ErrorResponse>> {
   try {
+    console.log('💰 Allocate API called');
+    console.log('🌐 Request details:', {
+      method: request.method,
+      url: request.url,
+      headers: Object.fromEntries(request.headers.entries()),
+      timestamp: new Date().toISOString()
+    });
     const body: AllocateRequest = await request.json();
-    console.log("Allocate request body:", body);
+    console.log('📊 RAW Allocate request body:', JSON.stringify(body, null, 2));
     const { asset, userAddress, amount, txHash, targetGoalId } = body;
+    console.log('🔍 Extracted fields:', {
+      asset,
+      userAddress,
+      amount,
+      txHash,
+      targetGoalId,
+      targetGoalIdType: typeof targetGoalId,
+      targetGoalIdValue: targetGoalId
+    });
 
     // Validate required fields
     if (!asset || !userAddress || !amount || !txHash) {
+      console.error('❌ Missing required fields:', { asset, userAddress, amount, txHash });
       return NextResponse.json(
         {
           error: "Missing required fields: asset, userAddress, amount, txHash",
@@ -41,11 +58,14 @@ export async function POST(
 
     // Validate user address
     if (!isValidAddress(userAddress)) {
+      console.error('❌ Invalid userAddress:', userAddress);
       return NextResponse.json(
         { error: "Invalid userAddress" },
         { status: 400 }
       );
     }
+    
+    console.log('✅ Processing allocation for:', { asset, userAddress, amount, targetGoalId });
 
     // Validate asset
     const vaultConfig = VAULTS[asset];
@@ -126,10 +146,31 @@ export async function POST(
       );
 
       // Use target goal if specified, otherwise default to quicksave
+      console.log('🎯 Goal selection logic:', {
+        hasTargetGoalId: !!targetGoalId,
+        targetGoalIdValue: targetGoalId,
+        targetGoalIdType: typeof targetGoalId,
+        willUseTargetGoal: !!targetGoalId
+      });
+      
       if (targetGoalId) {
-        attachedGoalId = BigInt(targetGoalId);
-        console.log(`Using target goal: ${targetGoalId}`);
-      } else {
+        // Validate that target goal exists and matches the current vault
+        try {
+          const targetGoal = await goalManagerRead.goals(targetGoalId);
+          if (targetGoal.id.toString() === "0") {
+            console.log(`❌ Target goal ${targetGoalId} does not exist, falling back to quicksave`);
+          } else if (targetGoal.vault.toLowerCase() !== vaultConfig.address.toLowerCase()) {
+            console.log(`❌ Target goal ${targetGoalId} vault mismatch: expected ${vaultConfig.address}, got ${targetGoal.vault}. Falling back to quicksave`);
+          } else {
+            attachedGoalId = BigInt(targetGoalId);
+            console.log(`✅ Using target goal: ${targetGoalId} (converted to BigInt: ${attachedGoalId})`);
+          }
+        } catch (error) {
+          console.log(`❌ Error validating target goal ${targetGoalId}:`, error instanceof Error ? error.message : String(error));
+        }
+      }
+      
+      if (attachedGoalId === BigInt(0)) {
         // Get quicksave goal directly from contract
         attachedGoalId = await goalManagerRead.getQuicksaveGoal(
           vaultConfig.address,
@@ -153,8 +194,14 @@ export async function POST(
             attachedGoalId = goalEvent.args.goalId;
           }
         }
-        console.log(`Using quicksave goal: ${attachedGoalId}`);
+        console.log(`✅ Using quicksave goal: ${attachedGoalId}`);
       }
+      
+      console.log('🔗 Final goal attachment decision:', {
+        selectedGoalId: attachedGoalId.toString(),
+        wasTargetGoalProvided: !!targetGoalId,
+        originalTargetGoalId: targetGoalId
+      });
 
       if (attachedGoalId !== BigInt(0)) {
         // Verify goal exists before attaching
@@ -169,7 +216,14 @@ export async function POST(
                 [depositId]
               );
               await attachTx.wait();
-              console.log(`Successfully attached deposit ${depositId} to goal ${attachedGoalId}`);
+              console.log(`✅ Successfully attached deposit ${depositId} to goal ${attachedGoalId}`);
+              console.log('📋 Attachment summary:', {
+                depositId,
+                goalId: attachedGoalId.toString(),
+                userAddress,
+                wasTargetGoal: !!targetGoalId,
+                originalTargetGoalId: targetGoalId
+              });
             } catch (attachError) {
               const errorMsg = attachError instanceof Error ? attachError.message : String(attachError);
               if (errorMsg.includes("already unlocked") || errorMsg.includes("Not found")) {
@@ -208,16 +262,23 @@ export async function POST(
     await scoreTx.wait();
 
     // Return successful response
-    return NextResponse.json({
+    const response = {
       success: true,
       depositId,
       goalId: attachedGoalId.toString(),
       shares,
       formattedShares: formatAmountForDisplay(shares, vaultConfig.decimals, 4),
       allocationTxHash: txHash,
-    });
+    };
+    
+    console.log('📤 Allocate response data:', JSON.stringify(response, null, 2));
+    return NextResponse.json(response);
   } catch (error) {
-    console.error("Allocation error:", error);
+    console.error('❌ Allocation error:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      requestBody: request.body
+    });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Internal server error",

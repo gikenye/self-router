@@ -64,5 +64,5 @@ export const LEADERBOARD_ABI = [
 // Default RPC URL
 export const DEFAULT_RPC_URL = "https://forno.celo.org";
 
-// Leaderboard score decimals - based on cUSD (18 decimals) as the base scoring unit
-export const LEADERBOARD_DECIMALS = 18;
+// Leaderboard score decimals - based on USDC (6 decimals) as the base scoring unit
+export const LEADERBOARD_DECIMALS = 6;
