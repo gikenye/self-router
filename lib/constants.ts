@@ -31,7 +31,8 @@ export const VAULTS = {
 // Contract ABIs
 export const VAULT_ABI = [
   "function allocateOnrampDeposit(address user, uint256 amount, bytes32 txHash) external returns (uint256)",
-  "function deposits(uint256) external view returns (address owner, uint256 amount, uint256 shares, uint256 lockTier, uint256 lockedUntil, bool unlocked)",
+  "function deposits(address user, uint256 index) external view returns (uint256 shares, uint256 principal, uint256 depositTime, uint256 lockEnd, bool pledgedAsCollateral)",
+  "function depositCount(address user) external view returns (uint256)",
   "event OnrampDeposit(address indexed user, uint256 indexed depositId, uint256 amount, uint256 shares, bytes32 indexed txHash)",
   "event Deposited(address indexed user, uint256 indexed depositId, uint256 amount, uint256 shares, uint256 lockTier)",
 ];
@@ -47,6 +48,7 @@ export const GOAL_MANAGER_ABI = [
   "function getGoalProgressFull(uint256 goalId) external view returns (uint256 totalValue, uint256 percentBps)",
   "function attachmentCount(uint256 goalId) external view returns (uint256)",
   "function attachmentAt(uint256 goalId, uint256 index) external view returns (tuple(address owner, uint256 depositId, uint256 attachedAt, bool pledged))",
+  "function depositToGoal(bytes32 key) external view returns (uint256)",
   "event GoalCreated(uint256 indexed goalId, address indexed creator, address indexed vault, uint256 targetAmount, uint256 targetDate, string metadataURI)",
 ];
 
