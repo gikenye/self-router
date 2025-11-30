@@ -115,7 +115,6 @@ export async function POST(
     // Generate share link (you can customize this URL based on your frontend)
     const shareLink = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.example.com"}/goals/${goalId}`;
 
-    // Return successful response
     return NextResponse.json({
       success: true,
       goalId,
