@@ -393,6 +393,16 @@ async function handleAllocate(request: NextRequest) {
       await attachTx.wait();
     } catch (error) {
       console.log("Attachment failed:", error instanceof Error ? error.message : String(error));
+      return NextResponse.json({
+        success: true,
+        depositId: depositEvent.args.depositId.toString(),
+        goalId: attachedGoalId.toString(),
+        attached: false,
+        attachmentError: error instanceof Error ? error.message : "Attachment failed",
+        shares: depositEvent.args.shares.toString(),
+        formattedShares: formatAmountForDisplay(depositEvent.args.shares.toString(), vaultConfig.decimals, 4),
+        allocationTxHash: txHash,
+      });
     }
   }
 
@@ -424,12 +434,20 @@ async function handleGetGroupGoalMembers(request: NextRequest) {
     return NextResponse.json({ error: "Group goal not found" }, { status: 404 });
   }
 
-  console.log("🔄 Fetching fresh member data");
-  const memberData = await fetchGroupGoalMembers(metaGoal);
-  await collection.updateOne(
-    { metaGoalId },
-    { $set: { cachedMembers: memberData, lastSync: new Date().toISOString() } }
-  );
+  const CACHE_TTL_MS = 5 * 60 * 1000;
+  const isCacheValid = metaGoal.lastSync && 
+    (Date.now() - new Date(metaGoal.lastSync).getTime()) < CACHE_TTL_MS;
+
+  let memberData;
+  if (isCacheValid && metaGoal.cachedMembers) {
+    memberData = metaGoal.cachedMembers;
+  } else {
+    memberData = await fetchGroupGoalMembers(metaGoal);
+    await collection.updateOne(
+      { metaGoalId },
+      { $set: { cachedMembers: memberData, lastSync: new Date().toISOString() } }
+    );
+  }
 
   return NextResponse.json({
     metaGoalId,
@@ -451,12 +469,9 @@ async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
     joinedAt: string;
   }> = {};
 
-  console.log("🔍 Fetching members for goal:", metaGoal.metaGoalId);
-
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     const goalId = BigInt(goalIdStr as string);
     const attachmentCount = await goalManager.attachmentCount(goalId);
-    console.log(`📊 ${asset} goal ${goalId}: ${attachmentCount} attachments`);
     
     const vaultConfig = VAULTS[asset as VaultAsset];
     const vault = new ethers.Contract(vaultConfig.address, ["function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)"], provider);
@@ -466,8 +481,6 @@ async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
       const owner = attachment.owner.toLowerCase();
       const [, currentValue] = await vault.getUserDeposit(attachment.owner, attachment.depositId);
       const contributionUSD = parseFloat(formatAmountForDisplay(currentValue.toString(), vaultConfig.decimals));
-      
-      console.log(`  👤 Member: ${attachment.owner}, Deposit: ${attachment.depositId}, Value: ${contributionUSD}`);
 
       if (!memberStats[owner]) {
         memberStats[owner] = {
@@ -485,8 +498,6 @@ async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
       memberStats[owner].depositCount++;
     }
   }
-  
-  console.log("✅ Total members found:", Object.keys(memberStats).length);
 
   const totalGoalValue = Object.values(memberStats).reduce((sum, m) => sum + m.totalContributionUSD, 0);
   Object.values(memberStats).forEach(member => {
@@ -571,7 +582,7 @@ async function handleCancelGoal(request: NextRequest) {
     } else {
       await collection.updateOne(
         { metaGoalId },
-        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString() }, $unset: { cancelled: "" } }
+        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
       );
     }
   }

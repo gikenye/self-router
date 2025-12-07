@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { calculateOptimalDuration, UserHabit } from "../../../../lib/goal-duration-calculator";
+import { calculateOptimalDuration, UserHabit, getTargetDateFromDuration } from "../../../../lib/goal-duration-calculator";
 import type { ErrorResponse } from "../../../../lib/types";
 
 interface DurationRequest {
@@ -20,6 +20,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<DurationR
     const body: DurationRequest = await request.json();
     const { targetAmountUSD, userHabit, avgDepositAmount } = body;
 
+    if (!targetAmountUSD || targetAmountUSD <= 0) {
+      return NextResponse.json(
+        { error: "targetAmountUSD must be greater than 0" },
+        { status: 400 }
+      );
+    }
+
+    if (avgDepositAmount !== undefined && avgDepositAmount <= 0) {
+      return NextResponse.json(
+        { error: "avgDepositAmount must be greater than 0" },
+        { status: 400 }
+      );
+    }
+
     const config = calculateOptimalDuration(targetAmountUSD, userHabit, avgDepositAmount);
     
     const minLockPeriodDays = Math.floor(config.minLockPeriod / (24 * 60 * 60));
@@ -34,7 +48,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<DurationR
     return NextResponse.json({
       minLockPeriodDays,
       suggestedDurationDays,
-      targetDateTimestamp: Math.floor(Date.now() / 1000) + config.suggestedDuration,
+      targetDateTimestamp: getTargetDateFromDuration(config.suggestedDuration),
       reasoning
     });
 

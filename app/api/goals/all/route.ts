@@ -5,11 +5,18 @@ import { createProvider } from "../../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../../lib/database";
 import type { ErrorResponse, MetaGoalWithProgress, VaultAsset } from "../../../../lib/types";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWithProgress[] | ErrorResponse>> {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const skip = parseInt(searchParams.get("skip") || "0");
+    const MAX_LIMIT = 100;
+    const DEFAULT_LIMIT = 50;
+    const rawLimit = parseInt(searchParams.get("limit") || String(DEFAULT_LIMIT));
+    const rawSkip = parseInt(searchParams.get("skip") || "0");
+    
+    const limit = Math.min(isNaN(rawLimit) ? DEFAULT_LIMIT : Math.max(1, rawLimit), MAX_LIMIT);
+    const skip = isNaN(rawSkip) ? 0 : Math.max(0, rawSkip);
 
     const collection = await getMetaGoalsCollection();
     const metaGoals = await collection
@@ -63,6 +70,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
         const progressResults = await Promise.all(progressPromises);
         
         const participantsSet = new Set<string>();
+        const MAX_ATTACHMENTS_PER_GOAL = 50;
         
         for (const { asset, data } of progressResults) {
           vaultProgress[asset] = data;
@@ -71,10 +79,15 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           if (data.attachmentCount > 0) {
             try {
               const goalId = BigInt(data.goalId);
-              for (let i = 0; i < data.attachmentCount; i++) {
-                const attachment = await goalManager.attachmentAt(goalId, i);
-                participantsSet.add(attachment.owner);
+              const fetchCount = Math.min(data.attachmentCount, MAX_ATTACHMENTS_PER_GOAL);
+              const attachmentPromises = [];
+              
+              for (let i = 0; i < fetchCount; i++) {
+                attachmentPromises.push(goalManager.attachmentAt(goalId, i));
               }
+              
+              const attachments = await Promise.all(attachmentPromises);
+              attachments.forEach(attachment => participantsSet.add(attachment.owner));
             } catch (error) {
               console.error(`Error fetching attachments for goal ${data.goalId}:`, error);
             }

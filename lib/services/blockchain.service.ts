@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { CONTRACTS, VAULT_ABI, GOAL_MANAGER_ABI, LEADERBOARD_ABI } from "../constants";
+import { findEventInLogs } from "../utils";
 
 export class BlockchainService {
   constructor(private provider: ethers.JsonRpcProvider) {}
@@ -30,12 +31,17 @@ export class BlockchainService {
     const leaderboard = this.getLeaderboard();
     const topLength = await leaderboard.getTopListLength();
     const maxCheck = Math.min(Number(topLength), 1000);
+    const batchSize = 100;
 
-    for (let i = 0; i < maxCheck; i++) {
+    for (let start = 0; start < maxCheck; start += batchSize) {
       try {
-        const topUser = await leaderboard.topList(i);
-        if (topUser.toLowerCase() === userAddress.toLowerCase()) {
-          return i + 1;
+        const end = Math.min(start + batchSize, maxCheck);
+        const [users] = await leaderboard.getTopRange(start, end);
+        const index = users.findIndex(
+          (u: string) => u.toLowerCase() === userAddress.toLowerCase()
+        );
+        if (index !== -1) {
+          return start + index + 1;
         }
       } catch {
         break;
@@ -57,7 +63,6 @@ export class BlockchainService {
       const tx = await goalManagerWithSigner.createQuicksaveGoalFor(userAddress, vaultAddress);
       const receipt = await tx.wait();
 
-      const { findEventInLogs } = await import("../utils");
       const goalEvent = findEventInLogs(receipt.logs, goalManagerWithSigner, "GoalCreated");
       
       if (goalEvent) {

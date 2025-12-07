@@ -3,7 +3,7 @@
 export interface AllocateRequest {
   asset: keyof typeof import("./constants").VAULTS;
   userAddress: string;
-  amount: string;
+  amount: string; // Must be a raw integer string (e.g., "1000000"), no decimals or formatting
   txHash: string;
   targetGoalId?: string;
 }
@@ -172,7 +172,7 @@ export interface MetaGoal {
 export interface MetaGoalWithProgress extends MetaGoal {
   totalProgressUSD: number;
   progressPercent: number;
-  vaultProgress: Record<
+  vaultProgress: Partial<Record<
     VaultAsset,
     {
       goalId: string;
@@ -180,7 +180,7 @@ export interface MetaGoalWithProgress extends MetaGoal {
       progressPercent: number;
       attachmentCount: number;
     }
-  >;
+  >>;
   participants: string[];
   userBalance: string;
   userBalanceUSD: string;
