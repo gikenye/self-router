@@ -117,6 +117,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
     let metaGoals: MetaGoal[];
     
     if (participantAddress) {
+      // TODO: Add participants array field to MetaGoal schema and update during attachment
+      // to enable database-level filtering: collection.find({ participants: participantAddress })
       metaGoals = await collection.find({}).toArray();
     } else if (creatorAddress) {
       metaGoals = await collection.find({ creatorAddress }).toArray();
@@ -179,10 +181,14 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
               activeGoals[asset] = data.goalId;
               
               if (data.attachmentCount > 0) {
-                for (let i = 0; i < data.attachmentCount; i++) {
-                  const attachment = await goalManager.attachmentAt(goalId, i);
-                  participantsSet.add(attachment.owner.toLowerCase());
-                }
+                const maxAttachments = Math.min(data.attachmentCount, 50);
+                const attachmentPromises = Array.from({ length: maxAttachments }, (_, i) =>
+                  goalManager.attachmentAt(goalId, i).catch(() => null)
+                );
+                const attachments = await Promise.all(attachmentPromises);
+                attachments.forEach((att) => {
+                  if (att) participantsSet.add(att.owner.toLowerCase());
+                });
               }
             }
           } catch (error) {

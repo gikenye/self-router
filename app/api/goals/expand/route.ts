@@ -75,6 +75,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<{ success
       }
     }
 
+    console.log(`Created on-chain goals for meta-goal ${metaGoal?.metaGoalId}:`, newOnChainGoals);
+
     if (isNewMetaGoal && metaGoal) {
       await collection.insertOne(metaGoal);
     } else if (metaGoal) {

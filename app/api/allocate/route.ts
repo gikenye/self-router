@@ -7,6 +7,7 @@ import {
   GOAL_MANAGER_ABI,
   LEADERBOARD_ABI,
 } from "../../../lib/constants";
+import { getContractCompliantTargetDate } from "../../../lib/goal-duration-calculator";
 import {
   createProvider,
   createBackendWallet,
@@ -31,7 +32,7 @@ export async function POST(
     console.log('🌐 Request details:', {
       method: request.method,
       url: request.url,
-      headers: Object.fromEntries(request.headers.entries()),
+      contentType: request.headers.get('content-type'),
       timestamp: new Date().toISOString()
     });
     const body: AllocateRequest & { metaGoalId?: string; tokenSymbol?: string } = await request.json();
@@ -218,7 +219,6 @@ export async function POST(
             if (expandableGoal) {
               // Auto-expand the goal to include this asset
               const targetAmountWei = ethers.parseUnits(expandableGoal.targetAmountUSD.toString(), vaultConfig.decimals);
-              const { getContractCompliantTargetDate } = await import("../../../lib/goal-duration-calculator");
               const parsedTargetDate = getContractCompliantTargetDate();
               
               const createTx = await goalManagerWrite.createGoalFor(
@@ -336,7 +336,7 @@ export async function POST(
     );
     const scoreTx = await leaderboard.recordDepositOnBehalf(
       userAddress,
-      amount
+      BigInt(amount)
     );
     await scoreTx.wait();
 

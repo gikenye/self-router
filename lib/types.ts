@@ -172,7 +172,7 @@ export interface MetaGoal {
 export interface MetaGoalWithProgress extends MetaGoal {
   totalProgressUSD: number;
   progressPercent: number;
-  vaultProgress: Record<
+  vaultProgress: Partial<Record<
     VaultAsset,
     {
       goalId: string;
@@ -180,7 +180,7 @@ export interface MetaGoalWithProgress extends MetaGoal {
       progressPercent: number;
       attachmentCount: number;
     }
-  >;
+  >>;
   participants: string[];
   userBalance: string;
   userBalanceUSD: string;

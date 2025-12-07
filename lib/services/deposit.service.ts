@@ -98,7 +98,8 @@ export class DepositService {
 
         const attachedGoalId = await goalManager.depositToGoal(key);
         return attachedGoalId.toString() === "0" ? i : null;
-      } catch {
+      } catch (error) {
+        console.error(`Error checking attachment for deposit ${i}:`, error);
         return null;
       }
     });

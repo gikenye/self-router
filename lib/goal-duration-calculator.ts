@@ -63,6 +63,8 @@ export function getTargetDateFromDuration(durationSeconds: number): number {
 }
 
 export function getContractCompliantTargetDate(): number {
-  // Match the successful script pattern: 31 days from now
-  return Math.floor(Date.now() / 1000) + (31 * 24 * 60 * 60);
+  // 30 days (MIN_LOCK_PERIOD) + 1 day buffer for contract compliance
+  const MIN_LOCK_PERIOD_DAYS = 30;
+  const BUFFER_DAYS = 1;
+  return Math.floor(Date.now() / 1000) + (MIN_LOCK_PERIOD_DAYS + BUFFER_DAYS) * 24 * 60 * 60;
 }
