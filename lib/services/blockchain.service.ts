@@ -1,0 +1,70 @@
+import { ethers } from "ethers";
+import { CONTRACTS, VAULT_ABI, GOAL_MANAGER_ABI, LEADERBOARD_ABI } from "../constants";
+
+export class BlockchainService {
+  constructor(private provider: ethers.JsonRpcProvider) {}
+
+  getGoalManager(signer?: ethers.Wallet) {
+    return new ethers.Contract(
+      CONTRACTS.GOAL_MANAGER,
+      GOAL_MANAGER_ABI,
+      signer || this.provider
+    );
+  }
+
+  getLeaderboard(signer?: ethers.Wallet) {
+    return new ethers.Contract(
+      CONTRACTS.LEADERBOARD,
+      LEADERBOARD_ABI,
+      signer || this.provider
+    );
+  }
+
+  getVault(address: string, signer?: ethers.Wallet) {
+    return new ethers.Contract(address, VAULT_ABI, signer || this.provider);
+  }
+
+  async getUserLeaderboardRank(userAddress: string, score: bigint): Promise<number | null> {
+    if (score <= BigInt(0)) return null;
+
+    const leaderboard = this.getLeaderboard();
+    const topLength = await leaderboard.getTopListLength();
+    const maxCheck = Math.min(Number(topLength), 1000);
+
+    for (let i = 0; i < maxCheck; i++) {
+      try {
+        const topUser = await leaderboard.topList(i);
+        if (topUser.toLowerCase() === userAddress.toLowerCase()) {
+          return i + 1;
+        }
+      } catch {
+        break;
+      }
+    }
+    return null;
+  }
+
+  async getOrCreateQuicksaveGoal(
+    vaultAddress: string,
+    userAddress: string,
+    signer: ethers.Wallet
+  ): Promise<string> {
+    const goalManager = this.getGoalManager();
+    let quicksaveId = await goalManager.getQuicksaveGoal(vaultAddress, userAddress);
+
+    if (quicksaveId.toString() === "0") {
+      const goalManagerWithSigner = this.getGoalManager(signer);
+      const tx = await goalManagerWithSigner.createQuicksaveGoalFor(userAddress, vaultAddress);
+      const receipt = await tx.wait();
+
+      const { findEventInLogs } = await import("../utils");
+      const goalEvent = findEventInLogs(receipt.logs, goalManagerWithSigner, "GoalCreated");
+      
+      if (goalEvent) {
+        quicksaveId = goalEvent.args.goalId;
+      }
+    }
+
+    return quicksaveId.toString();
+  }
+}

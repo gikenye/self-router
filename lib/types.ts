@@ -155,4 +155,63 @@ export interface UserPositionsResponse {
 // Utility types
 export type ApiResponse<T> = T | ErrorResponse;
 
-export type VaultAsset = keyof typeof import("./constants").VAULTS;
+export type VaultAsset = "USDC" | "cUSD" | "USDT" | "cKES";
+
+// Multi-vault goal types
+export interface MetaGoal {
+  metaGoalId: string;
+  name: string;
+  targetAmountUSD: number;
+  targetDate: string;
+  creatorAddress: string;
+  onChainGoals: Record<VaultAsset, string>; // asset -> goalId mapping
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MetaGoalWithProgress extends MetaGoal {
+  totalProgressUSD: number;
+  progressPercent: number;
+  vaultProgress: Record<
+    VaultAsset,
+    {
+      goalId: string;
+      progressUSD: number;
+      progressPercent: number;
+      attachmentCount: number;
+    }
+  >;
+  participants: string[];
+  userBalance: string;
+  userBalanceUSD: string;
+}
+
+export interface CreateMultiVaultGoalRequest {
+  name: string;
+  targetAmountUSD: number;
+  targetDate?: string;
+  creatorAddress: string;
+  vaults: VaultAsset[] | "all";
+}
+
+export interface CreateMultiVaultGoalResponse {
+  success: boolean;
+  metaGoalId: string;
+  onChainGoals: Record<VaultAsset, string>;
+  txHashes: Record<VaultAsset, string>;
+}
+
+export interface AttachDepositRequest {
+  metaGoalId: string;
+  depositVault: string;
+  depositId: string;
+  userAddress: string;
+}
+
+export interface AttachDepositResponse {
+  success: boolean;
+  metaGoalId: string;
+  attachedToGoalId: string;
+  vault: string;
+  attachTxHash: string;
+}
