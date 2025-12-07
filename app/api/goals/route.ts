@@ -13,6 +13,8 @@ import type {
   MetaGoal,
   MetaGoalWithProgress,
 } from "../../../lib/types";
+
+export const dynamic = 'force-dynamic';
 import type { Collection } from "mongodb";
 
 async function syncUserGoalsFromBlockchain(userAddress: string, goalManager: ethers.Contract, collection: Collection<MetaGoal>) {

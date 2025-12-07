@@ -9,6 +9,8 @@ import { DepositService } from "../../../lib/services/deposit.service";
 import { RequestValidator } from "../../../lib/validators/request.validator";
 import type { ErrorResponse, AssetBalance, VaultAsset, MetaGoal } from "../../../lib/types";
 
+export const dynamic = 'force-dynamic';
+
 interface ConsolidatedUserResponse {
   userAddress: string;
   totalValueUSD: string;
