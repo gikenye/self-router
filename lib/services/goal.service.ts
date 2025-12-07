@@ -2,41 +2,42 @@ import { BlockchainService } from "./blockchain.service";
 import { getMetaGoalsCollection } from "../database";
 import type { Goal, GoalAttachment, MetaGoalWithProgress, VaultAsset } from "../types";
 
+const MAX_ATTACHMENTS_TO_FETCH = 100;
+
 export class GoalService {
   constructor(private blockchainService: BlockchainService) {}
 
-  async getGoalDetails(goalId: string): Promise<Goal | null> {
-    try {
-      const goalManager = this.blockchainService.getGoalManager();
-      const goal = await goalManager.goals(goalId);
-      const [totalValue, percentBps] = await goalManager.getGoalProgressFull(goalId);
-      const attachmentCount = await goalManager.attachmentCount(goalId);
-
-      const attachments = await this.getGoalAttachments(goalId, Number(attachmentCount));
-
-      return {
-        id: goal.id.toString(),
-        creator: goal.creator,
-        vault: goal.vault,
-        targetAmount: goal.targetAmount.toString(),
-        targetDate: goal.targetDate.toString(),
-        metadataURI: goal.metadataURI,
-        createdAt: goal.createdAt.toString(),
-        cancelled: goal.cancelled,
-        completed: goal.completed,
-        totalValue: totalValue.toString(),
-        percentBps: percentBps.toString(),
-        attachments,
-      };
-    } catch (error) {
-      console.error(`Error fetching goal ${goalId}:`, error);
-      return null;
+  async getGoalDetails(goalId: string): Promise<Goal> {
+    const goalManager = this.blockchainService.getGoalManager();
+    const goal = await goalManager.goals(goalId);
+    
+    if (goal.id.toString() === "0") {
+      throw new Error(`Goal ${goalId} not found`);
     }
+    
+    const [totalValue, percentBps] = await goalManager.getGoalProgressFull(goalId);
+    const attachmentCount = await goalManager.attachmentCount(goalId);
+    const attachments = await this.getGoalAttachments(goalId, Number(attachmentCount));
+
+    return {
+      id: goal.id.toString(),
+      creator: goal.creator,
+      vault: goal.vault,
+      targetAmount: goal.targetAmount.toString(),
+      targetDate: goal.targetDate.toString(),
+      metadataURI: goal.metadataURI,
+      createdAt: goal.createdAt.toString(),
+      cancelled: goal.cancelled,
+      completed: goal.completed,
+      totalValue: totalValue.toString(),
+      percentBps: percentBps.toString(),
+      attachments,
+    };
   }
 
   private async getGoalAttachments(goalId: string, count: number): Promise<GoalAttachment[]> {
     const goalManager = this.blockchainService.getGoalManager();
-    const maxAttachments = Math.min(count, 100);
+    const maxAttachments = Math.min(count, MAX_ATTACHMENTS_TO_FETCH);
     
     const attachmentPromises = Array.from({ length: maxAttachments }, (_, i) =>
       goalManager.attachmentAt(goalId, i).catch(() => null)
@@ -118,7 +119,9 @@ export class GoalService {
         totalProgressUSD,
         progressPercent,
         vaultProgress,
+        // TODO: Implement participants aggregation from attachment data
         participants: [],
+        // TODO: Implement user-specific balance calculation
         userBalance: "0",
         userBalanceUSD: "0.00",
       });

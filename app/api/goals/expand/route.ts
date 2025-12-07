@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../../lib/constants";
-import { createProvider, createBackendWallet, findEventInLogs } from "../../../../lib/utils";
+import { createProvider, createBackendWallet, findEventInLogs, getContractCompliantTargetDate } from "../../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../../lib/database";
-import { getContractCompliantTargetDate } from "../../../../lib/goal-duration-calculator";
 import type { ErrorResponse, VaultAsset } from "../../../../lib/types";
 
 interface ExpandGoalRequest {

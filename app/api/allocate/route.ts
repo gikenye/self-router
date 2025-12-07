@@ -7,7 +7,7 @@ import {
   GOAL_MANAGER_ABI,
   LEADERBOARD_ABI,
 } from "../../../lib/constants";
-import { getContractCompliantTargetDate } from "../../../lib/goal-duration-calculator";
+import { getContractCompliantTargetDate } from "../../../lib/utils";
 import {
   createProvider,
   createBackendWallet,
@@ -71,8 +71,24 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Validate and normalize amount
+    const normalizedAmount = amount.trim();
+    if (!/^[+-]?\d+$/.test(normalizedAmount)) {
+      return NextResponse.json(
+        { error: "Invalid amount. Must be a raw integer string (e.g., '1000000'), no decimals or formatting allowed" },
+        { status: 400 }
+      );
+    }
+    const amountNum = Number(normalizedAmount);
+    if (!Number.isInteger(amountNum)) {
+      return NextResponse.json(
+        { error: "Invalid amount. Must be an integer value" },
+        { status: 400 }
+      );
+    }
     
-    console.log('✅ Processing allocation for:', { finalAsset, userAddress, amount, targetGoalId });
+    console.log('✅ Processing allocation for:', { finalAsset, userAddress, amount: normalizedAmount, targetGoalId });
 
     // Validate asset
     const vaultConfig = VAULTS[finalAsset];
@@ -336,7 +352,7 @@ export async function POST(
     );
     const scoreTx = await leaderboard.recordDepositOnBehalf(
       userAddress,
-      BigInt(amount)
+      BigInt(normalizedAmount)
     );
     await scoreTx.wait();
 

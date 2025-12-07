@@ -132,7 +132,8 @@ export function getAssetDecimalsFromVault(vaultAddress: string): number {
 
 /**
  * Get contract-compliant target date
- * Returns 30 days from now, matching MIN_LOCK_PERIOD in GoalManager.sol
+ * Returns now + MIN_LOCK_PERIOD (30 days) matching GoalManager.sol
+ * No extra buffer applied - callers should not add additional buffers to avoid stacking
  */
 export function getContractCompliantTargetDate(): number {
   const MIN_LOCK_PERIOD_DAYS = 30;

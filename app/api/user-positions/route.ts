@@ -582,7 +582,7 @@ async function handleCancelGoal(request: NextRequest) {
     } else {
       await collection.updateOne(
         { metaGoalId },
-        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString() } }
+        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
       );
     }
   }

@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";
 import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../lib/constants";
-import { createProvider, createBackendWallet, findEventInLogs, isValidAddress } from "../../../lib/utils";
+import { createProvider, createBackendWallet, findEventInLogs, isValidAddress, getContractCompliantTargetDate } from "../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../lib/database";
-import { getContractCompliantTargetDate } from "../../../lib/goal-duration-calculator";
 import type {
   CreateMultiVaultGoalRequest,
   CreateMultiVaultGoalResponse,

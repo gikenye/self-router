@@ -42,8 +42,7 @@ export function calculateOptimalDuration(
 
   const baseCalculation = estimatedTimeToComplete * riskMultipliers[userHabit.riskTolerance];
   
-  // Ensure minimum lock period compliance (add 1 day buffer like successful script)
-  const suggestedDays = Math.max(MIN_LOCK_PERIOD_DAYS + 1, Math.ceil(baseCalculation));
+  const suggestedDays = Math.max(MIN_LOCK_PERIOD_DAYS, Math.ceil(baseCalculation));
   const suggestedDuration = suggestedDays * 24 * 60 * 60;
 
   // Cap at reasonable maximum (1 year)
@@ -57,14 +56,5 @@ export function calculateOptimalDuration(
 }
 
 export function getTargetDateFromDuration(durationSeconds: number): number {
-  // Add 1 day buffer to ensure contract compliance (like the successful script)
-  const bufferSeconds = 24 * 60 * 60; // 1 day
-  return Math.floor(Date.now() / 1000) + durationSeconds + bufferSeconds;
-}
-
-export function getContractCompliantTargetDate(): number {
-  // 30 days (MIN_LOCK_PERIOD) + 1 day buffer for contract compliance
-  const MIN_LOCK_PERIOD_DAYS = 30;
-  const BUFFER_DAYS = 1;
-  return Math.floor(Date.now() / 1000) + (MIN_LOCK_PERIOD_DAYS + BUFFER_DAYS) * 24 * 60 * 60;
+  return Math.floor(Date.now() / 1000) + durationSeconds;
 }
