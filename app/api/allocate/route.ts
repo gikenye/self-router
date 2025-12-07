@@ -19,7 +19,9 @@ import type {
   AllocateRequest,
   AllocateResponse,
   ErrorResponse,
+  VaultAsset,
 } from "../../../lib/types";
+import { getMetaGoalsCollection } from "../../../lib/database";
 
 export async function POST(
   request: NextRequest
@@ -32,11 +34,15 @@ export async function POST(
       headers: Object.fromEntries(request.headers.entries()),
       timestamp: new Date().toISOString()
     });
-    const body: AllocateRequest = await request.json();
+    const body: AllocateRequest & { metaGoalId?: string; tokenSymbol?: string } = await request.json();
     console.log('📊 RAW Allocate request body:', JSON.stringify(body, null, 2));
-    const { asset, userAddress, amount, txHash, targetGoalId } = body;
+    const { asset, tokenSymbol, userAddress, amount, txHash, targetGoalId, metaGoalId } = body;
+    // Handle both asset and tokenSymbol for backward compatibility
+    const finalAsset = asset || tokenSymbol;
     console.log('🔍 Extracted fields:', {
       asset,
+      tokenSymbol,
+      finalAsset,
       userAddress,
       amount,
       txHash,
@@ -46,11 +52,11 @@ export async function POST(
     });
 
     // Validate required fields
-    if (!asset || !userAddress || !amount || !txHash) {
-      console.error('❌ Missing required fields:', { asset, userAddress, amount, txHash });
+    if (!finalAsset || !userAddress || !amount || !txHash) {
+      console.error('❌ Missing required fields:', { finalAsset, userAddress, amount, txHash });
       return NextResponse.json(
         {
-          error: "Missing required fields: asset, userAddress, amount, txHash",
+          error: "Missing required fields: asset/tokenSymbol, userAddress, amount, txHash",
         },
         { status: 400 }
       );
@@ -65,10 +71,10 @@ export async function POST(
       );
     }
     
-    console.log('✅ Processing allocation for:', { asset, userAddress, amount, targetGoalId });
+    console.log('✅ Processing allocation for:', { finalAsset, userAddress, amount, targetGoalId });
 
     // Validate asset
-    const vaultConfig = VAULTS[asset];
+    const vaultConfig = VAULTS[finalAsset];
     if (!vaultConfig) {
       return NextResponse.json(
         {
@@ -148,12 +154,43 @@ export async function POST(
       // Use target goal if specified, otherwise default to quicksave
       console.log('🎯 Goal selection logic:', {
         hasTargetGoalId: !!targetGoalId,
+        hasMetaGoalId: !!metaGoalId,
         targetGoalIdValue: targetGoalId,
         targetGoalIdType: typeof targetGoalId,
-        willUseTargetGoal: !!targetGoalId
+        willUseTargetGoal: !!targetGoalId || !!metaGoalId
       });
       
-      if (targetGoalId) {
+      // Handle meta-goal routing first
+      if (metaGoalId && !targetGoalId) {
+        try {
+          const collection = await getMetaGoalsCollection();
+          const metaGoal = await collection.findOne({ metaGoalId });
+          
+          if (metaGoal) {
+            const onChainGoalId = metaGoal.onChainGoals[finalAsset as VaultAsset];
+            if (onChainGoalId) {
+              console.log(`🎯 Meta-goal ${metaGoalId} resolved to on-chain goal ${onChainGoalId} for ${finalAsset}`);
+              // Validate the resolved goal exists and matches vault
+              const resolvedGoal = await goalManagerRead.goals(onChainGoalId);
+              if (resolvedGoal.id.toString() !== "0" && 
+                  resolvedGoal.vault.toLowerCase() === vaultConfig.address.toLowerCase()) {
+                attachedGoalId = BigInt(onChainGoalId);
+                console.log(`✅ Using meta-goal resolved target: ${onChainGoalId}`);
+              } else {
+                console.log(`❌ Meta-goal resolved goal ${onChainGoalId} invalid, falling back to quicksave`);
+              }
+            } else {
+              console.log(`❌ Meta-goal ${metaGoalId} has no on-chain goal for ${finalAsset}, falling back to quicksave`);
+            }
+          } else {
+            console.log(`❌ Meta-goal ${metaGoalId} not found, falling back to quicksave`);
+          }
+        } catch (error) {
+          console.log(`❌ Error resolving meta-goal ${metaGoalId}:`, error instanceof Error ? error.message : String(error));
+        }
+      }
+      
+      if (targetGoalId && attachedGoalId === BigInt(0)) {
         // Validate that target goal exists and matches the current vault
         try {
           const targetGoal = await goalManagerRead.goals(targetGoalId);
@@ -171,30 +208,72 @@ export async function POST(
       }
       
       if (attachedGoalId === BigInt(0)) {
-        // Get quicksave goal directly from contract
-        attachedGoalId = await goalManagerRead.getQuicksaveGoal(
-          vaultConfig.address,
-          userAddress
-        );
-
-        if (attachedGoalId.toString() === "0") {
-          // Create quicksave goal
-          const createTx = await goalManagerWrite.createQuicksaveGoalFor(
-            userAddress,
-            vaultConfig.address
-          );
-          const createReceipt = await createTx.wait();
-
-          const goalEvent = findEventInLogs(
-            createReceipt.logs,
-            goalManagerWrite,
-            "GoalCreated"
-          );
-          if (goalEvent) {
-            attachedGoalId = goalEvent.args.goalId;
+        // Check if user has existing goals in other vaults that could be expanded
+        try {
+          const collection = await getMetaGoalsCollection();
+          const userMetaGoals = await collection.find({ creatorAddress: userAddress }).toArray();
+          if (userMetaGoals.length > 0) {
+            // Find a meta-goal that doesn't have this asset yet
+            const expandableGoal = userMetaGoals.find((mg: { onChainGoals: Record<string, string> }) => !mg.onChainGoals[finalAsset as VaultAsset]);
+            if (expandableGoal) {
+              // Auto-expand the goal to include this asset
+              const targetAmountWei = ethers.parseUnits(expandableGoal.targetAmountUSD.toString(), vaultConfig.decimals);
+              const { getContractCompliantTargetDate } = await import("../../../lib/goal-duration-calculator");
+              const parsedTargetDate = getContractCompliantTargetDate();
+              
+              const createTx = await goalManagerWrite.createGoalFor(
+                userAddress,
+                vaultConfig.address,
+                targetAmountWei,
+                parsedTargetDate,
+                expandableGoal.name
+              );
+              
+              const createReceipt = await createTx.wait();
+              const goalEvent = findEventInLogs(createReceipt.logs, goalManagerWrite, "GoalCreated");
+              
+              if (goalEvent) {
+                attachedGoalId = goalEvent.args.goalId;
+                // Update meta-goal in database
+                expandableGoal.onChainGoals[finalAsset as VaultAsset] = attachedGoalId.toString();
+                await collection.updateOne(
+                  { metaGoalId: expandableGoal.metaGoalId },
+                  { $set: { onChainGoals: expandableGoal.onChainGoals, updatedAt: new Date().toISOString() } }
+                );
+                console.log(`✅ Auto-expanded meta-goal ${expandableGoal.metaGoalId} to include ${finalAsset}`);
+              }
+            }
           }
+        } catch (error) {
+          console.log('Auto-expansion failed, falling back to quicksave:', error);
         }
-        console.log(`✅ Using quicksave goal: ${attachedGoalId}`);
+        
+        if (attachedGoalId === BigInt(0)) {
+          // Get quicksave goal directly from contract
+          attachedGoalId = await goalManagerRead.getQuicksaveGoal(
+            vaultConfig.address,
+            userAddress
+          );
+
+          if (attachedGoalId.toString() === "0") {
+            // Create quicksave goal
+            const createTx = await goalManagerWrite.createQuicksaveGoalFor(
+              userAddress,
+              vaultConfig.address
+            );
+            const createReceipt = await createTx.wait();
+
+            const goalEvent = findEventInLogs(
+              createReceipt.logs,
+              goalManagerWrite,
+              "GoalCreated"
+            );
+            if (goalEvent) {
+              attachedGoalId = goalEvent.args.goalId;
+            }
+          }
+          console.log(`✅ Using quicksave goal: ${attachedGoalId}`);
+        }
       }
       
       console.log('🔗 Final goal attachment decision:', {

@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from "next/server";
+import { ethers } from "ethers";
+import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../../lib/constants";
+import { createProvider, createBackendWallet, findEventInLogs } from "../../../../lib/utils";
+import { getMetaGoalsCollection } from "../../../../lib/database";
+import { getContractCompliantTargetDate } from "../../../../lib/goal-duration-calculator";
+import type { ErrorResponse, VaultAsset } from "../../../../lib/types";
+
+interface ExpandGoalRequest {
+  goalId: string;
+  newVaults: VaultAsset[];
+  userAddress: string;
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse<{ success: boolean; metaGoalId: string; newOnChainGoals: Partial<Record<VaultAsset, string>> } | ErrorResponse>> {
+  try {
+    const body: ExpandGoalRequest = await request.json();
+    const { goalId, newVaults, userAddress } = body;
+
+    const provider = createProvider();
+    const backendWallet = createBackendWallet(provider);
+    const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+    const collection = await getMetaGoalsCollection();
+
+    let metaGoal;
+    let isNewMetaGoal = false;
+
+    if (goalId.includes('-')) {
+      metaGoal = await collection.findOne({ metaGoalId: goalId });
+    } else {
+      const onChainGoal = await goalManager.goals(goalId);
+      let existingVault: VaultAsset | null = null;
+      for (const [asset, config] of Object.entries(VAULTS)) {
+        if (config.address.toLowerCase() === onChainGoal.vault.toLowerCase()) {
+          existingVault = asset as VaultAsset;
+          break;
+        }
+      }
+
+      metaGoal = {
+        metaGoalId: `expanded-${goalId}-${Date.now()}`,
+        name: onChainGoal.metadataURI || `Goal ${goalId}`,
+        targetAmountUSD: 1000,
+        targetDate: new Date(Number(onChainGoal.targetDate) * 1000).toISOString(),
+        creatorAddress: userAddress,
+        onChainGoals: { [existingVault!]: goalId } as Record<VaultAsset, string>,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      isNewMetaGoal = true;
+    }
+
+    const newOnChainGoals: Partial<Record<VaultAsset, string>> = {};
+    for (const asset of newVaults) {
+      if (metaGoal!.onChainGoals[asset]) continue;
+
+      const vaultConfig = VAULTS[asset];
+      const targetAmountWei = ethers.parseUnits(metaGoal!.targetAmountUSD.toString(), vaultConfig.decimals);
+      const parsedTargetDate = getContractCompliantTargetDate();
+
+      const tx = await goalManager.createGoalFor(
+        userAddress,
+        vaultConfig.address,
+        targetAmountWei,
+        parsedTargetDate,
+        metaGoal!.name
+      );
+
+      const receipt = await tx.wait();
+      const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
+      
+      if (goalEvent) {
+        newOnChainGoals[asset] = goalEvent.args.goalId.toString();
+        metaGoal!.onChainGoals[asset] = goalEvent.args.goalId.toString();
+      }
+    }
+
+    if (isNewMetaGoal && metaGoal) {
+      await collection.insertOne(metaGoal);
+    } else if (metaGoal) {
+      await collection.updateOne(
+        { metaGoalId: metaGoal!.metaGoalId },
+        { $set: { onChainGoals: metaGoal!.onChainGoals, updatedAt: new Date().toISOString() } }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      metaGoalId: metaGoal!.metaGoalId,
+      newOnChainGoals
+    });
+
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

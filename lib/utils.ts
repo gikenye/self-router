@@ -129,3 +129,10 @@ export function getAssetDecimalsFromVault(vaultAddress: string): number {
   // Default to 18 decimals if vault not found
   return 18;
 }
+
+/**
+ * Get contract-compliant target date (30 days from now)
+ */
+export function getContractCompliantTargetDate(): number {
+  return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+}
