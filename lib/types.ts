@@ -199,6 +199,7 @@ export interface CreateMultiVaultGoalResponse {
   metaGoalId: string;
   onChainGoals: Record<VaultAsset, string>;
   txHashes: Record<VaultAsset, string>;
+  shareLink?: string;
 }
 
 export interface AttachDepositRequest {

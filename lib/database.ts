@@ -3,6 +3,7 @@ import type { MetaGoal } from "./types";
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
+let connectionPromise: Promise<Db> | null = null;
 
 function extractDbNameFromUri(uri: string): string | null {
   const match = uri.match(/\/([^/?]+)(\?|$)/);
@@ -10,27 +11,59 @@ function extractDbNameFromUri(uri: string): string | null {
 }
 
 export async function connectToDatabase(): Promise<Db> {
-  if (db) return db;
-
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI environment variable is required");
+  if (db && client) {
+    try {
+      await client.db().admin().ping();
+      return db;
+    } catch (error) {
+      console.log("Connection lost, reconnecting...");
+      client = null;
+      db = null;
+      connectionPromise = null;
+    }
   }
 
-  const dbName = process.env.MONGODB_DB_NAME || extractDbNameFromUri(uri);
-  if (!dbName) {
-    throw new Error("Database name not found in URI or MONGODB_DB_NAME");
+  if (connectionPromise) {
+    return connectionPromise;
   }
 
-  client = new MongoClient(uri);
-  await client.connect();
-  db = client.db(dbName);
+  connectionPromise = (async () => {
+    const uri = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
+    if (!uri) {
+      throw new Error("MONGODB_URI or NEXT_PUBLIC_MONGODB_URI environment variable is required");
+    }
 
-  if (process.env.LOG_DB_CONNECTION === "true") {
-    console.log("✅ Connected to MongoDB");
+    const dbName = process.env.MONGODB_DB_NAME || extractDbNameFromUri(uri);
+    if (!dbName) {
+      throw new Error("Database name not found in URI or MONGODB_DB_NAME");
+    }
+
+    client = new MongoClient(uri, {
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      retryWrites: true,
+      retryReads: true,
+    });
+
+    await client.connect();
+    db = client.db(dbName);
+
+    if (process.env.LOG_DB_CONNECTION === "true") {
+      console.log("✅ Connected to MongoDB");
+    }
+
+    return db;
+  })();
+
+  try {
+    return await connectionPromise;
+  } catch (error) {
+    connectionPromise = null;
+    throw error;
   }
-
-  return db;
 }
 
 export async function getMetaGoalsCollection(): Promise<Collection<MetaGoal>> {

@@ -178,7 +178,10 @@ async function handleCreateGoal(request: NextRequest) {
   const collection = await getMetaGoalsCollection();
   await collection.insertOne(metaGoal);
 
-  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes });
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const shareLink = `${baseUrl}/goals/${metaGoalId}`;
+
+  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes, shareLink });
 }
 
 async function handleCreateGroupGoal(request: NextRequest) {
@@ -249,7 +252,10 @@ async function handleCreateGroupGoal(request: NextRequest) {
   const collection = await getMetaGoalsCollection();
   await collection.insertOne(metaGoal as MetaGoal);
 
-  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes });
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const shareLink = `${baseUrl}/goals/${metaGoalId}`;
+
+  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes, shareLink });
 }
 
 async function handleJoinGoal(request: NextRequest) {
@@ -569,29 +575,42 @@ async function handleCancelGoal(request: NextRequest) {
     }
   }
 
-  if (Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0) {
-    const remainingGoals: Record<string, string> = {};
-    for (const [asset, goalId] of Object.entries(metaGoal.onChainGoals)) {
-      if (!cancelledGoals[asset] && !alreadyCancelled.includes(asset)) {
-        remainingGoals[asset] = goalId as string;
+  // Always clean up database regardless of cancellation success
+  const remainingGoals: Record<string, string> = {};
+  
+  // Check all goals on-chain to determine which are still active
+  for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
+    try {
+      const goalId = BigInt(goalIdStr as string);
+      const [, , , , , , , cancelled] = await goalManager.goals(goalId);
+      
+      // Only keep goals that are not cancelled
+      if (!cancelled) {
+        remainingGoals[asset] = goalIdStr as string;
       }
-    }
-
-    if (Object.keys(remainingGoals).length === 0) {
-      await collection.deleteOne({ metaGoalId });
-    } else {
-      await collection.updateOne(
-        { metaGoalId },
-        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
-      );
+    } catch (error) {
+      console.error(`Error checking goal ${goalIdStr} status:`, error);
+      // If we can't check the goal status, assume it's cancelled for safety
     }
   }
 
+  // Update database based on remaining active goals
+  if (Object.keys(remainingGoals).length === 0) {
+    await collection.deleteOne({ metaGoalId });
+  } else {
+    await collection.updateOne(
+      { metaGoalId },
+      { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
+    );
+  }
+
   return NextResponse.json({
-    success: Object.keys(cancelledGoals).length > 0,
+    success: Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0,
     metaGoalId,
     cancelledGoals,
+    alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
     errors: Object.keys(errors).length > 0 ? errors : undefined,
+    remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
   });
 }
 
