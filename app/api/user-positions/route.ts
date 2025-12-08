@@ -607,6 +607,10 @@ async function handleCancelGoal(request: NextRequest) {
       error: "Cannot determine on-chain status for some goals",
       statusUnknown,
       metaGoalId,
+      cancelledGoals,
+      alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
+      errors: Object.keys(errors).length > 0 ? errors : undefined,
+      remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
     }, { status: 500 });
   }
 
@@ -621,13 +625,11 @@ async function handleCancelGoal(request: NextRequest) {
 
   return NextResponse.json({
     success: Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0,
-    partialSuccess: statusUnknown.length > 0,
     metaGoalId,
     cancelledGoals,
     alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
     errors: Object.keys(errors).length > 0 ? errors : undefined,
     remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
-    statusUnknown: statusUnknown.length > 0 ? statusUnknown : undefined,
   });
 }
 
