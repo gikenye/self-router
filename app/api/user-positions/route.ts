@@ -178,7 +178,10 @@ async function handleCreateGoal(request: NextRequest) {
   const collection = await getMetaGoalsCollection();
   await collection.insertOne(metaGoal);
 
-  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes });
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const shareLink = `${baseUrl}/goals/${metaGoalId}`;
+
+  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes, shareLink });
 }
 
 async function handleCreateGroupGoal(request: NextRequest) {
@@ -249,7 +252,10 @@ async function handleCreateGroupGoal(request: NextRequest) {
   const collection = await getMetaGoalsCollection();
   await collection.insertOne(metaGoal as MetaGoal);
 
-  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes });
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const shareLink = `${baseUrl}/goals/${metaGoalId}`;
+
+  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes, shareLink });
 }
 
 async function handleJoinGoal(request: NextRequest) {
@@ -543,6 +549,7 @@ async function handleCancelGoal(request: NextRequest) {
   const cancelledGoals: Record<string, string> = {};
   const errors: Record<string, string> = {};
   const alreadyCancelled: string[] = [];
+  const statusUnknown: string[] = [];
 
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     try {
@@ -569,14 +576,24 @@ async function handleCancelGoal(request: NextRequest) {
     }
   }
 
-  if (Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0) {
-    const remainingGoals: Record<string, string> = {};
-    for (const [asset, goalId] of Object.entries(metaGoal.onChainGoals)) {
-      if (!cancelledGoals[asset] && !alreadyCancelled.includes(asset)) {
-        remainingGoals[asset] = goalId as string;
+  const remainingGoals: Record<string, string> = {};
+  
+  for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
+    try {
+      const goalId = BigInt(goalIdStr as string);
+      const [, , , , , , , cancelled] = await goalManager.goals(goalId);
+      
+      if (!cancelled) {
+        remainingGoals[asset] = goalIdStr as string;
       }
+    } catch (error) {
+      console.error(`Error checking goal ${goalIdStr} status for asset ${asset}:`, error);
+      statusUnknown.push(asset);
+      remainingGoals[asset] = goalIdStr as string;
     }
+  }
 
+  if (statusUnknown.length > 0) {
     if (Object.keys(remainingGoals).length === 0) {
       await collection.deleteOne({ metaGoalId });
     } else {
@@ -585,13 +602,34 @@ async function handleCancelGoal(request: NextRequest) {
         { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
       );
     }
+    return NextResponse.json({
+      success: false,
+      error: "Cannot determine on-chain status for some goals",
+      statusUnknown,
+      metaGoalId,
+      cancelledGoals,
+      alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
+      errors: Object.keys(errors).length > 0 ? errors : undefined,
+      remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
+    }, { status: 500 });
+  }
+
+  if (Object.keys(remainingGoals).length === 0) {
+    await collection.deleteOne({ metaGoalId });
+  } else {
+    await collection.updateOne(
+      { metaGoalId },
+      { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
+    );
   }
 
   return NextResponse.json({
-    success: Object.keys(cancelledGoals).length > 0,
+    success: Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0,
     metaGoalId,
     cancelledGoals,
+    alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
     errors: Object.keys(errors).length > 0 ? errors : undefined,
+    remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
   });
 }
 

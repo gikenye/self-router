@@ -201,7 +201,25 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
             : 0;
 
         if (Object.keys(activeGoals).length === 0) {
+          // Clean up database if no active goals remain
+          try {
+            await collection.deleteOne({ metaGoalId: metaGoal.metaGoalId });
+          } catch (error) {
+            console.error(`Error cleaning up cancelled meta goal ${metaGoal.metaGoalId}:`, error);
+          }
           return null;
+        }
+
+        // Update database if some goals were cancelled
+        if (Object.keys(activeGoals).length !== Object.keys(metaGoal.onChainGoals).length) {
+          try {
+            await collection.updateOne(
+              { metaGoalId: metaGoal.metaGoalId },
+              { $set: { onChainGoals: activeGoals, updatedAt: new Date().toISOString() } }
+            );
+          } catch (error) {
+            console.error(`Error updating meta goal ${metaGoal.metaGoalId}:`, error);
+          }
         }
 
         return {
