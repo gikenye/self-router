@@ -28,9 +28,9 @@ export async function connectToDatabase(): Promise<Db> {
   }
 
   connectionPromise = (async () => {
-    const uri = process.env.MONGODB_URI || process.env.NEXT_PUBLIC_MONGODB_URI;
+    const uri = process.env.MONGODB_URI;
     if (!uri) {
-      throw new Error("MONGODB_URI or NEXT_PUBLIC_MONGODB_URI environment variable is required");
+      throw new Error("MONGODB_URI environment variable is required");
     }
 
     const dbName = process.env.MONGODB_DB_NAME || extractDbNameFromUri(uri);
@@ -61,6 +61,8 @@ export async function connectToDatabase(): Promise<Db> {
   try {
     return await connectionPromise;
   } catch (error) {
+    client = null;
+    db = null;
     connectionPromise = null;
     throw error;
   }

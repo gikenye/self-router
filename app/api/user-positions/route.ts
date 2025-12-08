@@ -549,6 +549,7 @@ async function handleCancelGoal(request: NextRequest) {
   const cancelledGoals: Record<string, string> = {};
   const errors: Record<string, string> = {};
   const alreadyCancelled: string[] = [];
+  const statusUnknown: string[] = [];
 
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     try {
@@ -575,26 +576,32 @@ async function handleCancelGoal(request: NextRequest) {
     }
   }
 
-  // Always clean up database regardless of cancellation success
   const remainingGoals: Record<string, string> = {};
   
-  // Check all goals on-chain to determine which are still active
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     try {
       const goalId = BigInt(goalIdStr as string);
       const [, , , , , , , cancelled] = await goalManager.goals(goalId);
       
-      // Only keep goals that are not cancelled
       if (!cancelled) {
         remainingGoals[asset] = goalIdStr as string;
       }
     } catch (error) {
-      console.error(`Error checking goal ${goalIdStr} status:`, error);
-      // If we can't check the goal status, assume it's cancelled for safety
+      console.error(`Error checking goal ${goalIdStr} status for asset ${asset}:`, error);
+      statusUnknown.push(asset);
+      remainingGoals[asset] = goalIdStr as string;
     }
   }
 
-  // Update database based on remaining active goals
+  if (statusUnknown.length > 0) {
+    return NextResponse.json({
+      success: false,
+      error: "Cannot determine on-chain status for some goals",
+      statusUnknown,
+      metaGoalId,
+    }, { status: 500 });
+  }
+
   if (Object.keys(remainingGoals).length === 0) {
     await collection.deleteOne({ metaGoalId });
   } else {
