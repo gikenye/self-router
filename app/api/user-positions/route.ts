@@ -593,6 +593,23 @@ async function handleCancelGoal(request: NextRequest) {
     }
   }
 
+  if (statusUnknown.length > 0) {
+    if (Object.keys(remainingGoals).length === 0) {
+      await collection.deleteOne({ metaGoalId });
+    } else {
+      await collection.updateOne(
+        { metaGoalId },
+        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
+      );
+    }
+    return NextResponse.json({
+      success: false,
+      error: "Cannot determine on-chain status for some goals",
+      statusUnknown,
+      metaGoalId,
+    }, { status: 500 });
+  }
+
   if (Object.keys(remainingGoals).length === 0) {
     await collection.deleteOne({ metaGoalId });
   } else {
