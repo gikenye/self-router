@@ -195,7 +195,7 @@ async function handleCreateGoal(request: NextRequest) {
     name,
     targetAmountUSD,
     targetDate: targetDate || "",
-    creatorAddress,
+    creatorAddress: creatorAddress.toLowerCase(),
     onChainGoals,
     participants: [creatorAddress.toLowerCase()],
     createdAt: new Date().toISOString(),
@@ -268,7 +268,7 @@ async function handleCreateGroupGoal(request: NextRequest) {
     name,
     targetAmountUSD,
     targetDate: targetDate || "",
-    creatorAddress,
+    creatorAddress: creatorAddress.toLowerCase(),
     onChainGoals,
     isPublic: isPublic ?? true,
     participants: [creatorAddress.toLowerCase()],
@@ -857,13 +857,20 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
         }
       });
 
+      let rank: number | null = null;
+      try {
+        rank = await blockchainService.getUserLeaderboardRank(address, score);
+      } catch (error) {
+        console.error(`Failed to get rank for ${address}:`, error);
+      }
+
       return {
         rank: start + index + 1,
         userAddress: address,
         totalValueUSD: totalValueUSD.toFixed(2),
         leaderboardScore: score.toString(),
         formattedLeaderboardScore: formatAmountForDisplay(score.toString(), 6, 2),
-        leaderboardRank: start + index + 1,
+        leaderboardRank: rank ?? start + index + 1,
         assetBalances,
       };
     })
@@ -940,7 +947,7 @@ async function handleGetMyGroups(userAddress: string) {
   const userGroups = await collection.find({ 
     $or: [
       { participants: { $in: [userAddress.toLowerCase()] } },
-      { creatorAddress: userAddress }
+      { creatorAddress: userAddress.toLowerCase() }
     ],
     name: { $ne: "quicksave" }
   }).toArray();
