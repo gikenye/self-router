@@ -175,8 +175,7 @@ async function handleCreateGoal(request: NextRequest) {
   const nonce = await backendWallet.getNonce();
   const txPromises = targetVaults.map(async (asset, index) => {
     const vaultConfig = VAULTS[asset];
-    const roundedAmount = Number(targetAmountUSD).toFixed(vaultConfig.decimals);
-    const targetAmountWei = ethers.parseUnits(roundedAmount, vaultConfig.decimals);
+    const targetAmountWei = ethers.parseUnits(targetAmountUSD.toString(), vaultConfig.decimals);
     const tx = await goalManager.createGoalFor(creatorAddress, vaultConfig.address, targetAmountWei, parsedTargetDate, name, { nonce: nonce + index });
     const receipt = await tx.wait();
     const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
@@ -249,8 +248,7 @@ async function handleCreateGroupGoal(request: NextRequest) {
   const nonce = await backendWallet.getNonce();
   const txPromises = targetVaults.map(async (asset, index) => {
     const vaultConfig = VAULTS[asset];
-    const roundedAmount = Number(targetAmountUSD).toFixed(vaultConfig.decimals);
-    const targetAmountWei = ethers.parseUnits(roundedAmount, vaultConfig.decimals);
+    const targetAmountWei = ethers.parseUnits(targetAmountUSD.toString(), vaultConfig.decimals);
     const tx = await goalManager.createGoalFor(creatorAddress, vaultConfig.address, targetAmountWei, parsedTargetDate, name, { nonce: nonce + index });
     const receipt = await tx.wait();
     const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
@@ -273,7 +271,7 @@ async function handleCreateGroupGoal(request: NextRequest) {
     creatorAddress,
     onChainGoals,
     isPublic: isPublic ?? true,
-    participants: [creatorAddress],
+    participants: [creatorAddress.toLowerCase()],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -342,10 +340,10 @@ async function handleJoinGoal(request: NextRequest) {
   const collection = await getMetaGoalsCollection();
   const metaGoal = await collection.findOne({ [`onChainGoals.${asset}`]: goalId }) as (MetaGoal & { participants?: string[] }) | null;
   
-  if (metaGoal && metaGoal.participants && !metaGoal.participants.includes(userAddress)) {
+  if (metaGoal && metaGoal.participants && !metaGoal.participants.includes(userAddress.toLowerCase())) {
     await collection.updateOne(
       { metaGoalId: metaGoal.metaGoalId },
-      { $addToSet: { participants: userAddress }, $set: { updatedAt: new Date().toISOString() } }
+      { $addToSet: { participants: userAddress.toLowerCase() }, $set: { updatedAt: new Date().toISOString() } }
     );
   }
 
@@ -830,11 +828,15 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
 
   const [users] = await leaderboard.getTopRange(start, end);
 
+  const scores = await Promise.all(
+    users.map((address: string) => leaderboard.getUserScore(address))
+  );
+
   const leaderboardData = await Promise.all(
     users.map(async (address: string, index: number) => {
-      const [score, ...vaultResults] = await Promise.all([
-        leaderboard.getUserScore(address),
-        ...Object.entries(VAULTS).map(async ([assetName, vaultConfig]) => {
+      const score = scores[index];
+      const vaultResults = await Promise.all(
+        Object.entries(VAULTS).map(async ([assetName, vaultConfig]) => {
           const { assetBalance } = await depositService.processVaultDeposits(
             vaultConfig.address,
             assetName,
@@ -843,7 +845,7 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
           );
           return assetBalance.depositCount > 0 ? assetBalance : null;
         })
-      ]);
+      );
 
       const assetBalances: AssetBalance[] = [];
       let totalValueUSD = 0;
@@ -855,15 +857,13 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
         }
       });
 
-      const rank = await blockchainService.getUserLeaderboardRank(address, score);
-
       return {
         rank: start + index + 1,
         userAddress: address,
         totalValueUSD: totalValueUSD.toFixed(2),
         leaderboardScore: score.toString(),
         formattedLeaderboardScore: formatAmountForDisplay(score.toString(), 6, 2),
-        leaderboardRank: rank,
+        leaderboardRank: start + index + 1,
         assetBalances,
       };
     })
