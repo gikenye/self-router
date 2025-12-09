@@ -67,17 +67,18 @@ async function syncUserGoalsFromBlockchain(userAddress: string, goalManager: eth
 
     if (!existing) {
       const metaGoalId = uuidv4();
-      const metaGoal: MetaGoal = {
+      const metaGoal: MetaGoal & { participants?: string[] } = {
         metaGoalId,
         name: "quicksave",
         targetAmountUSD: 0,
         targetDate: "",
         creatorAddress: userAddress,
         onChainGoals,
+        participants: [userAddress.toLowerCase()],
         createdAt: new Date(earliestCreatedAt).toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await collection.insertOne(metaGoal);
+      await collection.insertOne(metaGoal as MetaGoal);
     } else {
       await collection.updateOne(
         { metaGoalId: existing.metaGoalId },
@@ -116,9 +117,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
     let metaGoals: MetaGoal[];
     
     if (participantAddress) {
-      // TODO: Add participants array field to MetaGoal schema and update during attachment
-      // to enable database-level filtering: collection.find({ participants: participantAddress })
-      metaGoals = await collection.find({}).toArray();
+      metaGoals = await collection.find({ 
+        participants: { $in: [participantAddress.toLowerCase()] } 
+      }).toArray();
     } else if (creatorAddress) {
       metaGoals = await collection.find({ creatorAddress }).toArray();
     } else {
@@ -210,12 +211,23 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           return null;
         }
 
-        // Update database if some goals were cancelled
-        if (Object.keys(activeGoals).length !== Object.keys(metaGoal.onChainGoals).length) {
+        // Update database if some goals were cancelled or participants changed
+        const participantsArray = Array.from(participantsSet);
+        const needsUpdate = 
+          Object.keys(activeGoals).length !== Object.keys(metaGoal.onChainGoals).length ||
+          JSON.stringify((metaGoal as MetaGoal & { participants?: string[] }).participants?.sort()) !== JSON.stringify(participantsArray.sort());
+
+        if (needsUpdate) {
           try {
             await collection.updateOne(
               { metaGoalId: metaGoal.metaGoalId },
-              { $set: { onChainGoals: activeGoals, updatedAt: new Date().toISOString() } }
+              { 
+                $set: { 
+                  onChainGoals: activeGoals, 
+                  participants: participantsArray,
+                  updatedAt: new Date().toISOString() 
+                } 
+              }
             );
           } catch (error) {
             console.error(`Error updating meta goal ${metaGoal.metaGoalId}:`, error);
@@ -236,14 +248,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
     );
 
     const validGoals = goalsWithProgress.filter(goal => goal !== null);
-
-    if (participantAddress) {
-      const filtered = validGoals.filter(goal => 
-        goal.participants?.some(p => p.toLowerCase() === participantAddress.toLowerCase())
-      );
-      return NextResponse.json(filtered);
-    }
-
     return NextResponse.json(validGoals);
   } catch (error) {
     console.error("Get meta-goals error:", error);
@@ -307,19 +311,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<CreateMul
       }
     }
 
-    const metaGoal: MetaGoal = {
+    const metaGoal: MetaGoal & { participants?: string[] } = {
       metaGoalId,
       name,
       targetAmountUSD,
       targetDate: targetDate || "",
       creatorAddress,
       onChainGoals,
+      participants: [creatorAddress.toLowerCase()],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     const collection = await getMetaGoalsCollection();
-    await collection.insertOne(metaGoal);
+    await collection.insertOne(metaGoal as MetaGoal);
 
     return NextResponse.json({
       success: true,
