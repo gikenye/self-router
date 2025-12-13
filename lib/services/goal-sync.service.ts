@@ -44,9 +44,13 @@ export class GoalSyncService {
       if (!asset) return null;
 
       const vaultConfig = VAULTS[asset];
-      const targetAmountUSD = parseFloat(
-        formatAmountForDisplay(onChainGoal.targetAmount.toString(), vaultConfig.decimals)
-      );
+      const formattedAmount = formatAmountForDisplay(onChainGoal.targetAmount.toString(), vaultConfig.decimals);
+      const targetAmountUSD = parseFloat(formattedAmount);
+      
+      if (!Number.isFinite(targetAmountUSD) || targetAmountUSD < 0) {
+        console.error(`Invalid targetAmountUSD for goal ${goalId}: ${formattedAmount}`);
+        return null;
+      }
 
       const collection = await this.getCollection();
       const existing = await collection.findOne({ [`onChainGoals.${asset}`]: goalId });
@@ -67,10 +71,17 @@ export class GoalSyncService {
         updatedAt: new Date().toISOString(),
       };
 
-      await collection.insertOne(metaGoal);
-      console.log(`✅ Synced goal ${goalId} from chain to DB as meta-goal ${metaGoalId}`);
-      
-      return metaGoal;
+      try {
+        await collection.insertOne(metaGoal);
+        console.log(`✅ Synced goal ${goalId} from chain to DB as meta-goal ${metaGoalId}`);
+        return metaGoal;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("duplicate")) {
+          const retry = await collection.findOne({ [`onChainGoals.${asset}`]: goalId });
+          return retry;
+        }
+        throw error;
+      }
     } catch (error) {
       console.error(`Failed to sync goal ${goalId}:`, error);
       return null;
@@ -136,44 +147,49 @@ export class GoalSyncService {
     }
 
     if (hasGoals) {
-      const existing = await collection.findOne({
-        creatorAddress: userAddress.toLowerCase(),
-        targetAmountUSD: 0,
-        name: "quicksave"
-      });
-
-      if (!existing) {
-        const metaGoalId = uuidv4();
-        await collection.insertOne({
-          metaGoalId,
-          name: "quicksave",
+      const normalizedAddress = userAddress.toLowerCase();
+      const now = new Date().toISOString();
+      
+      await collection.updateOne(
+        {
+          creatorAddress: normalizedAddress,
           targetAmountUSD: 0,
-          targetDate: "",
-          creatorAddress: userAddress.toLowerCase(),
-          onChainGoals: syncedGoals,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      } else {
-        await collection.updateOne(
-          { metaGoalId: existing.metaGoalId },
-          { $set: { onChainGoals: syncedGoals, updatedAt: new Date().toISOString() } }
-        );
-      }
+          name: "quicksave"
+        },
+        {
+          $set: { 
+            onChainGoals: syncedGoals, 
+            updatedAt: now 
+          },
+          $setOnInsert: {
+            metaGoalId: uuidv4(),
+            name: "quicksave",
+            targetAmountUSD: 0,
+            targetDate: "",
+            creatorAddress: normalizedAddress,
+            createdAt: now
+          }
+        },
+        { upsert: true }
+      );
     }
   }
 
   async getGoalWithFallback(goalId: string): Promise<{ metaGoal: MetaGoal | null; fromChain: boolean }> {
     const collection = await this.getCollection();
     
-    for (const [asset] of Object.entries(VAULTS)) {
-      const existing = await collection.findOne({ [`onChainGoals.${asset}`]: goalId });
-      if (existing) {
-        return { metaGoal: existing, fromChain: false };
-      }
+    const searchPromises = Object.keys(VAULTS).map(asset => 
+      collection.findOne({ [`onChainGoals.${asset}`]: goalId })
+    );
+    
+    const results = await Promise.all(searchPromises);
+    const existing = results.find(result => result !== null);
+    
+    if (existing) {
+      return { metaGoal: existing, fromChain: false };
     }
 
     const synced = await this.syncGoalFromChain(goalId);
-    return { metaGoal: synced, fromChain: true };
+    return { metaGoal: synced, fromChain: synced !== null };
   }
 }
