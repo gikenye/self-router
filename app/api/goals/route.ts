@@ -16,77 +16,77 @@ import type {
 
 export const dynamic = 'force-dynamic';
 
-async function syncUserGoalsFromBlockchain(userAddress: string, goalManager: ethers.Contract, collection: Collection<MetaGoal>) {
-  const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
-  let earliestCreatedAt = Date.now();
-  let hasAnyGoal = false;
+// async function syncUserGoalsFromBlockchain(userAddress: string, goalManager: ethers.Contract, collection: Collection<MetaGoal>) {
+//   const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
+//   let earliestCreatedAt = Date.now();
+//   let hasAnyGoal = false;
 
-  for (const [asset, vaultConfig] of Object.entries(VAULTS)) {
-    try {
-      const goalId = await goalManager.getQuicksaveGoal(vaultConfig.address, userAddress);
+//   for (const [asset, vaultConfig] of Object.entries(VAULTS)) {
+//     try {
+//       const goalId = await goalManager.getQuicksaveGoal(vaultConfig.address, userAddress);
       
-      if (goalId > BigInt(0)) {
-        hasAnyGoal = true;
-        const goal = await goalManager.goals(goalId);
-        if (goal.creator.toLowerCase() === userAddress.toLowerCase()) {
-          onChainGoals[asset as VaultAsset] = goalId.toString();
-          const createdAt = Number(goal.createdAt) * 1000;
-          if (createdAt < earliestCreatedAt) earliestCreatedAt = createdAt;
-        }
-      }
-    } catch (error) {
-      console.error(`Error syncing ${asset} goal:`, error);
-    }
-  }
+//       if (goalId > BigInt(0)) {
+//         hasAnyGoal = true;
+//         const goal = await goalManager.goals(goalId);
+//         if (goal.creator.toLowerCase() === userAddress.toLowerCase()) {
+//           onChainGoals[asset as VaultAsset] = goalId.toString();
+//           const createdAt = Number(goal.createdAt) * 1000;
+//           if (createdAt < earliestCreatedAt) earliestCreatedAt = createdAt;
+//         }
+//       }
+//     } catch (error) {
+//       console.error(`Error syncing ${asset} goal:`, error);
+//     }
+//   }
 
-  if (hasAnyGoal) {
-    const provider = createProvider();
-    const backendWallet = createBackendWallet(provider);
-    const goalManagerWrite = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+//   if (hasAnyGoal) {
+//     const provider = createProvider();
+//     const backendWallet = createBackendWallet(provider);
+//     const goalManagerWrite = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
 
-    for (const [asset, vaultConfig] of Object.entries(VAULTS)) {
-      if (!onChainGoals[asset as VaultAsset]) {
-        try {
-          const tx = await goalManagerWrite.createQuicksaveGoalFor(userAddress, vaultConfig.address);
-          const receipt = await tx.wait();
-          const goalEvent = findEventInLogs(receipt.logs, goalManagerWrite, "GoalCreated");
-          if (goalEvent) {
-            onChainGoals[asset as VaultAsset] = goalEvent.args.goalId.toString();
-          }
-        } catch (error) {
-          console.error(`Error creating ${asset} quicksave goal:`, error);
-        }
-      }
-    }
+//     for (const [asset, vaultConfig] of Object.entries(VAULTS)) {
+//       if (!onChainGoals[asset as VaultAsset]) {
+//         try {
+//           const tx = await goalManagerWrite.createQuicksaveGoalFor(userAddress, vaultConfig.address);
+//           const receipt = await tx.wait();
+//           const goalEvent = findEventInLogs(receipt.logs, goalManagerWrite, "GoalCreated");
+//           if (goalEvent) {
+//             onChainGoals[asset as VaultAsset] = goalEvent.args.goalId.toString();
+//           }
+//         } catch (error) {
+//           console.error(`Error creating ${asset} quicksave goal:`, error);
+//         }
+//       }
+//     }
 
-    const existing = await collection.findOne({ 
-      creatorAddress: userAddress,
-      targetAmountUSD: 0,
-      name: "quicksave"
-    });
+//     const existing = await collection.findOne({ 
+//       creatorAddress: userAddress,
+//       targetAmountUSD: 0,
+//       name: "quicksave"
+//     });
 
-    if (!existing) {
-      const metaGoalId = uuidv4();
-      const metaGoal: MetaGoal & { participants?: string[] } = {
-        metaGoalId,
-        name: "quicksave",
-        targetAmountUSD: 0,
-        targetDate: "",
-        creatorAddress: userAddress,
-        onChainGoals,
-        participants: [userAddress.toLowerCase()],
-        createdAt: new Date(earliestCreatedAt).toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await collection.insertOne(metaGoal as MetaGoal);
-    } else {
-      await collection.updateOne(
-        { metaGoalId: existing.metaGoalId },
-        { $set: { onChainGoals, updatedAt: new Date().toISOString() } }
-      );
-    }
-  }
-}
+//     if (!existing) {
+//       const metaGoalId = uuidv4();
+//       const metaGoal: MetaGoal & { participants?: string[] } = {
+//         metaGoalId,
+//         name: "quicksave",
+//         targetAmountUSD: 0,
+//         targetDate: "",
+//         creatorAddress: userAddress,
+//         onChainGoals,
+//         participants: [userAddress.toLowerCase()],
+//         createdAt: new Date(earliestCreatedAt).toISOString(),
+//         updatedAt: new Date().toISOString(),
+//       };
+//       await collection.insertOne(metaGoal as MetaGoal);
+//     } else {
+//       await collection.updateOne(
+//         { metaGoalId: existing.metaGoalId },
+//         { $set: { onChainGoals, updatedAt: new Date().toISOString() } }
+//       );
+//     }
+//   }
+// }
 
 export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWithProgress[] | ErrorResponse>> {
   try {

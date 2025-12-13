@@ -24,8 +24,12 @@ export async function GET(
       // Try to find by on-chain goal ID (if metaGoalId is actually a goalId)
       const syncService = new GoalSyncService();
       const result = await syncService.getGoalWithFallback(metaGoalId);
-      metaGoal = result.metaGoal;
       
+      if (!result.metaGoal) {
+        return NextResponse.json({ error: "Meta-goal not found" }, { status: 404 });
+      }
+      
+      metaGoal = await collection.findOne({ metaGoalId: result.metaGoal.metaGoalId });
       if (!metaGoal) {
         return NextResponse.json({ error: "Meta-goal not found" }, { status: 404 });
       }

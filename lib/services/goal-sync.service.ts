@@ -62,7 +62,7 @@ export class GoalSyncService {
         targetAmountUSD,
         targetDate: new Date(Number(onChainGoal.targetDate) * 1000).toISOString(),
         creatorAddress: onChainGoal.creator.toLowerCase(),
-        onChainGoals: { [asset]: goalId } as Record<VaultAsset, string>,
+        onChainGoals: { [asset]: goalId },
         createdAt: new Date(Number(onChainGoal.createdAt) * 1000).toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -88,8 +88,8 @@ export class GoalSyncService {
       console.log(`📊 Found ${events.length} GoalCreated events`);
       
       for (const event of events) {
-        const goalId = event.args?.goalId?.toString();
-        if (goalId) {
+        if ("args" in event && event.args?.goalId) {
+          const goalId = event.args.goalId.toString();
           console.log(`  - Goal ID: ${goalId}`);
           discoveredGoalIds.push(goalId);
           await this.syncGoalFromChain(goalId);

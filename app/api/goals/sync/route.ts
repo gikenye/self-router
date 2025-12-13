@@ -9,8 +9,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<{ success
     const { userAddress, goalId, fromBlock } = body;
 
     if (goalId) {
+      if (typeof goalId !== "string" || goalId.trim() === "") {
+        return NextResponse.json({ error: "Invalid goalId: must be a non-empty string" }, { status: 400 });
+      }
+
       const syncService = new GoalSyncService();
-      const result = await syncService.syncGoalFromChain(goalId);
+      const result = await syncService.syncGoalFromChain(goalId.trim());
       
       return NextResponse.json({
         success: !!result,
@@ -23,8 +27,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<{ success
         return NextResponse.json({ error: "Invalid user address" }, { status: 400 });
       }
 
+      let validatedFromBlock = -5000;
+      if (fromBlock !== undefined) {
+        const parsed = Number(fromBlock);
+        if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+          return NextResponse.json({ error: "Invalid fromBlock: must be an integer" }, { status: 400 });
+        }
+        validatedFromBlock = parsed;
+      }
+
       const syncService = new GoalSyncService();
-      const discoveredGoalIds = await syncService.discoverUserGoalsFromEvents(userAddress, fromBlock);
+      const discoveredGoalIds = await syncService.discoverUserGoalsFromEvents(userAddress, validatedFromBlock);
       await syncService.syncUserGoals(userAddress);
       
       return NextResponse.json({ 
