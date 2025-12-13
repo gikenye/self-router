@@ -112,7 +112,6 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
 
     if (creatorAddress) {
       const syncService = new GoalSyncService(provider);
-      await syncService.discoverUserGoalsFromEvents(creatorAddress);
       await syncService.syncUserGoals(creatorAddress);
     }
 
@@ -120,7 +119,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
     
     if (participantAddress) {
       const syncService = new GoalSyncService(provider);
-      await syncService.discoverUserGoalsFromEvents(participantAddress);
+      await syncService.syncUserGoals(participantAddress);
       
       metaGoals = await collection.find({ 
         participants: { $in: [participantAddress.toLowerCase()] } 

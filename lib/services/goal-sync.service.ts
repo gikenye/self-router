@@ -81,9 +81,17 @@ export class GoalSyncService {
     const discoveredGoalIds: string[] = [];
     
     try {
-      console.log(`🔍 Discovering goals for ${userAddress} from block ${fromBlock}`);
+      let startBlock: number;
+      if (fromBlock < 0) {
+        const latestBlock = await this.provider.getBlockNumber();
+        startBlock = Math.max(0, latestBlock + fromBlock);
+      } else {
+        startBlock = Math.floor(fromBlock);
+      }
+      
+      console.log(`🔍 Discovering goals for ${userAddress} from block ${startBlock}`);
       const filter = this.goalManager.filters.GoalCreated(null, userAddress, null);
-      const events = await this.goalManager.queryFilter(filter, fromBlock, "latest");
+      const events = await this.goalManager.queryFilter(filter, startBlock, "latest");
       
       console.log(`📊 Found ${events.length} GoalCreated events`);
       
