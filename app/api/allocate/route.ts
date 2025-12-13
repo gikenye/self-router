@@ -233,7 +233,7 @@ export async function POST(
         // Check if user has existing goals in other vaults that could be expanded
         try {
           const collection = await getMetaGoalsCollection();
-          const userMetaGoals = await collection.find({ creatorAddress: userAddress }).toArray();
+          const userMetaGoals = await collection.find({ creatorAddress: userAddress.toLowerCase() }).toArray();
           if (userMetaGoals.length > 0) {
             // Find a meta-goal that doesn't have this asset yet
             const expandableGoal = userMetaGoals.find((mg: { onChainGoals: Record<string, string> }) => !mg.onChainGoals[finalAsset as VaultAsset]);

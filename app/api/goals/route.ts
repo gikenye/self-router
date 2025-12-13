@@ -320,7 +320,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CreateMul
       name,
       targetAmountUSD,
       targetDate: targetDate || "",
-      creatorAddress,
+      creatorAddress: creatorAddress.toLowerCase(),
       onChainGoals,
       participants: [creatorAddress.toLowerCase()],
       createdAt: new Date().toISOString(),
