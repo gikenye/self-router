@@ -164,7 +164,7 @@ export interface MetaGoal {
   targetAmountUSD: number;
   targetDate: string;
   creatorAddress: string;
-  onChainGoals: Record<VaultAsset, string>; // asset -> goalId mapping
+  onChainGoals: Partial<Record<VaultAsset, string>>; // asset -> goalId mapping
   createdAt: string;
   updatedAt: string;
 }

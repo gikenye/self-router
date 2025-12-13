@@ -23,6 +23,7 @@ import type {
   VaultAsset,
 } from "../../../lib/types";
 import { getMetaGoalsCollection } from "../../../lib/database";
+import { GoalSyncService } from "../../../lib/services/goal-sync.service";
 
 export async function POST(
   request: NextRequest
@@ -218,6 +219,10 @@ export async function POST(
           } else {
             attachedGoalId = BigInt(targetGoalId);
             console.log(`✅ Using target goal: ${targetGoalId} (converted to BigInt: ${attachedGoalId})`);
+            
+            // Lazy sync: ensure goal exists in database
+            const syncService = new GoalSyncService(provider);
+            await syncService.getGoalWithFallback(targetGoalId);
           }
         } catch (error) {
           console.log(`❌ Error validating target goal ${targetGoalId}:`, error instanceof Error ? error.message : String(error));
@@ -228,7 +233,7 @@ export async function POST(
         // Check if user has existing goals in other vaults that could be expanded
         try {
           const collection = await getMetaGoalsCollection();
-          const userMetaGoals = await collection.find({ creatorAddress: userAddress }).toArray();
+          const userMetaGoals = await collection.find({ creatorAddress: userAddress.toLowerCase() }).toArray();
           if (userMetaGoals.length > 0) {
             // Find a meta-goal that doesn't have this asset yet
             const expandableGoal = userMetaGoals.find((mg: { onChainGoals: Record<string, string> }) => !mg.onChainGoals[finalAsset as VaultAsset]);
