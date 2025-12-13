@@ -75,8 +75,8 @@ export class GoalSyncService {
         await collection.insertOne(metaGoal);
         console.log(`✅ Synced goal ${goalId} from chain to DB as meta-goal ${metaGoalId}`);
         return metaGoal;
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("duplicate")) {
+      } catch (error: any) {
+        if (error.code === 11000) {
           const retry = await collection.findOne({ [`onChainGoals.${asset}`]: goalId });
           return retry;
         }
