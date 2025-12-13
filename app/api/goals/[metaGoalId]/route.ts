@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../../lib/constants";
 import { createProvider, formatAmountForDisplay } from "../../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../../lib/database";
+import { GoalSyncService } from "../../../../lib/services/goal-sync.service";
 import type { ErrorResponse, VaultAsset, MetaGoalWithProgress } from "../../../../lib/types";
 
 export async function GET(
@@ -17,10 +18,17 @@ export async function GET(
     }
 
     const collection = await getMetaGoalsCollection();
-    const metaGoal = await collection.findOne({ metaGoalId });
+    let metaGoal = await collection.findOne({ metaGoalId });
 
     if (!metaGoal) {
-      return NextResponse.json({ error: "Meta-goal not found" }, { status: 404 });
+      // Try to find by on-chain goal ID (if metaGoalId is actually a goalId)
+      const syncService = new GoalSyncService();
+      const result = await syncService.getGoalWithFallback(metaGoalId);
+      metaGoal = result.metaGoal;
+      
+      if (!metaGoal) {
+        return NextResponse.json({ error: "Meta-goal not found" }, { status: 404 });
+      }
     }
 
     const provider = createProvider();

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../lib/constants";
 import { createProvider, createBackendWallet, findEventInLogs, isValidAddress, getContractCompliantTargetDate } from "../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../lib/database";
+import { GoalSyncService } from "../../../lib/services/goal-sync.service";
 import type {
   CreateMultiVaultGoalRequest,
   CreateMultiVaultGoalResponse,
@@ -14,7 +15,6 @@ import type {
 } from "../../../lib/types";
 
 export const dynamic = 'force-dynamic';
-import type { Collection } from "mongodb";
 
 async function syncUserGoalsFromBlockchain(userAddress: string, goalManager: ethers.Contract, collection: Collection<MetaGoal>) {
   const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
@@ -111,17 +111,22 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
     const collection = await getMetaGoalsCollection();
 
     if (creatorAddress) {
-      await syncUserGoalsFromBlockchain(creatorAddress, goalManager, collection);
+      const syncService = new GoalSyncService(provider);
+      await syncService.discoverUserGoalsFromEvents(creatorAddress);
+      await syncService.syncUserGoals(creatorAddress);
     }
 
     let metaGoals: MetaGoal[];
     
     if (participantAddress) {
+      const syncService = new GoalSyncService(provider);
+      await syncService.discoverUserGoalsFromEvents(participantAddress);
+      
       metaGoals = await collection.find({ 
         participants: { $in: [participantAddress.toLowerCase()] } 
       }).toArray();
     } else if (creatorAddress) {
-      metaGoals = await collection.find({ creatorAddress }).toArray();
+      metaGoals = await collection.find({ creatorAddress: creatorAddress.toLowerCase() }).toArray();
     } else {
       metaGoals = [];
     }

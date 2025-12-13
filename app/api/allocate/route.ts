@@ -23,6 +23,7 @@ import type {
   VaultAsset,
 } from "../../../lib/types";
 import { getMetaGoalsCollection } from "../../../lib/database";
+import { GoalSyncService } from "../../../lib/services/goal-sync.service";
 
 export async function POST(
   request: NextRequest
@@ -218,6 +219,10 @@ export async function POST(
           } else {
             attachedGoalId = BigInt(targetGoalId);
             console.log(`✅ Using target goal: ${targetGoalId} (converted to BigInt: ${attachedGoalId})`);
+            
+            // Lazy sync: ensure goal exists in database
+            const syncService = new GoalSyncService(provider);
+            await syncService.getGoalWithFallback(targetGoalId);
           }
         } catch (error) {
           console.log(`❌ Error validating target goal ${targetGoalId}:`, error instanceof Error ? error.message : String(error));
