@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";
 import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../lib/constants";
-import { createProvider, createBackendWallet, findEventInLogs, isValidAddress, getContractCompliantTargetDate } from "../../../lib/utils";
+import {
+  createProvider,
+  createBackendWallet,
+  findEventInLogs,
+  isValidAddress,
+  getContractCompliantTargetDate,
+} from "../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../lib/database";
 import { GoalSyncService } from "../../../lib/services/goal-sync.service";
 import type {
@@ -14,7 +20,7 @@ import type {
   MetaGoalWithProgress,
 } from "../../../lib/types";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 // async function syncUserGoalsFromBlockchain(userAddress: string, goalManager: ethers.Contract, collection: Collection<MetaGoal>) {
 //   const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
@@ -24,7 +30,7 @@ export const dynamic = 'force-dynamic';
 //   for (const [asset, vaultConfig] of Object.entries(VAULTS)) {
 //     try {
 //       const goalId = await goalManager.getQuicksaveGoal(vaultConfig.address, userAddress);
-      
+
 //       if (goalId > BigInt(0)) {
 //         hasAnyGoal = true;
 //         const goal = await goalManager.goals(goalId);
@@ -59,7 +65,7 @@ export const dynamic = 'force-dynamic';
 //       }
 //     }
 
-//     const existing = await collection.findOne({ 
+//     const existing = await collection.findOne({
 //       creatorAddress: userAddress,
 //       targetAmountUSD: 0,
 //       name: "quicksave"
@@ -88,26 +94,41 @@ export const dynamic = 'force-dynamic';
 //   }
 // }
 
-export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWithProgress[] | ErrorResponse>> {
+export async function GET(
+  request: NextRequest
+): Promise<NextResponse<MetaGoalWithProgress[] | ErrorResponse>> {
   try {
     const { searchParams } = new URL(request.url);
     const creatorAddress = searchParams.get("creatorAddress");
     const participantAddress = searchParams.get("participantAddress");
 
     if (creatorAddress && !isValidAddress(creatorAddress)) {
-      return NextResponse.json({ error: "Invalid creator address" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid creator address" },
+        { status: 400 }
+      );
     }
 
     if (participantAddress && !isValidAddress(participantAddress)) {
-      return NextResponse.json({ error: "Invalid participant address" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid participant address" },
+        { status: 400 }
+      );
     }
 
     if (!creatorAddress && !participantAddress) {
-      return NextResponse.json({ error: "Either creatorAddress or participantAddress required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Either creatorAddress or participantAddress required" },
+        { status: 400 }
+      );
     }
 
     const provider = createProvider();
-    const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, provider);
+    const goalManager = new ethers.Contract(
+      CONTRACTS.GOAL_MANAGER,
+      GOAL_MANAGER_ABI,
+      provider
+    );
     const collection = await getMetaGoalsCollection();
 
     if (creatorAddress) {
@@ -116,184 +137,343 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
     }
 
     let metaGoals: MetaGoal[];
-    
+
     if (participantAddress) {
       const syncService = new GoalSyncService(provider);
       await syncService.syncUserGoals(participantAddress);
-      
-      metaGoals = await collection.find({ 
-        participants: { $in: [participantAddress.toLowerCase()] } 
-      }).toArray();
+
+      metaGoals = await collection
+        .find({
+          participants: { $in: [participantAddress.toLowerCase()] },
+        })
+        .toArray();
     } else if (creatorAddress) {
-      metaGoals = await collection.find({ creatorAddress: creatorAddress.toLowerCase() }).toArray();
+      metaGoals = await collection
+        .find({ creatorAddress: creatorAddress.toLowerCase() })
+        .toArray();
     } else {
       metaGoals = [];
     }
 
-    const goalsWithProgress: (MetaGoalWithProgress | null)[] = await Promise.all(
-      metaGoals.map(async (metaGoal) => {
-        const vaultProgress: Record<VaultAsset, {
-          goalId: string;
-          progressUSD: number;
-          progressPercent: number;
-          attachmentCount: number;
-        }> = {} as Record<VaultAsset, {
-          goalId: string;
-          progressUSD: number;
-          progressPercent: number;
-          attachmentCount: number;
-        }>;
-
-        let totalProgressUSD = 0;
-
-        const progressPromises = Object.entries(metaGoal.onChainGoals).map(
-          async ([asset, goalIdStr]: [string, unknown]) => {
-            try {
-              const goalId = BigInt(goalIdStr as string);
-              const [, percentBps] = await goalManager.getGoalProgressFull(goalId);
-              const progressUSD = (Number(percentBps) / 10000) * metaGoal.targetAmountUSD;
-              const progressPercent = Number(percentBps) / 100;
-              const attachmentCount = Number(await goalManager.attachmentCount(goalId));
-
-              return {
-                asset: asset as VaultAsset,
-                data: { goalId: goalIdStr as string, progressUSD, progressPercent, attachmentCount },
-              };
-            } catch (error) {
-              console.error(`Error getting progress for goal ${goalIdStr}:`, error);
-              return {
-                asset: asset as VaultAsset,
-                data: { goalId: goalIdStr as string, progressUSD: 0, progressPercent: 0, attachmentCount: 0 },
-              };
+    const goalsWithProgress: (MetaGoalWithProgress | null)[] =
+      await Promise.all(
+        metaGoals.map(async (metaGoal) => {
+          const vaultProgress: Record<
+            VaultAsset,
+            {
+              goalId: string;
+              progressUSD: number;
+              progressPercent: number;
+              attachmentCount: number;
+              balance: string;
             }
-          }
-        );
+          > = {} as Record<
+            VaultAsset,
+            {
+              goalId: string;
+              progressUSD: number;
+              progressPercent: number;
+              attachmentCount: number;
+              balance: string;
+            }
+          >;
 
-        const progressResults = await Promise.all(progressPromises);
-        
-        const participantsSet = new Set<string>();
-        const activeGoals: Record<string, string> = {};
-        
-        for (const { asset, data } of progressResults) {
-          try {
-            const goalId = BigInt(data.goalId);
-            const [, , , , , , , cancelled] = await goalManager.goals(goalId);
-            
+          let totalProgressUSD = 0;
+
+          const progressPromises = Object.entries(metaGoal.onChainGoals).map(
+            async ([asset, goalIdStr]: [string, unknown]) => {
+              try {
+                const goalId = BigInt(goalIdStr as string);
+                const vaultConfig = VAULTS[asset as VaultAsset];
+                const vault = new ethers.Contract(
+                  vaultConfig.address,
+                  [
+                    "function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)",
+                  ],
+                  provider
+                );
+
+                const attachmentCount = Number(
+                  await goalManager.attachmentCount(goalId)
+                );
+                let totalBalance = BigInt(0);
+                const attachments: Array<{
+                  owner: string;
+                  depositId: bigint;
+                  currentValue: bigint;
+                }> = [];
+
+                if (attachmentCount > 0) {
+                  const attachmentPromises = Array.from(
+                    { length: attachmentCount },
+                    (_, i) =>
+                      goalManager
+                        .attachmentAt(goalId, i)
+                        .then((att: { owner: string; depositId: bigint }) =>
+                          vault
+                            .getUserDeposit(att.owner, att.depositId)
+                            .then(([, currentValue]: [bigint, bigint]) => ({
+                              owner: att.owner,
+                              depositId: att.depositId,
+                              currentValue,
+                            }))
+                        )
+                        .catch(() => null)
+                  );
+
+                  const results = await Promise.all(attachmentPromises);
+                  results.forEach((result) => {
+                    if (result) {
+                      attachments.push(result);
+                      totalBalance += result.currentValue;
+                    }
+                  });
+                }
+
+                const progressUSD = parseFloat(
+                  ethers.formatUnits(totalBalance, vaultConfig.decimals)
+                );
+                const progressPercent =
+                  metaGoal.targetAmountUSD > 0
+                    ? (progressUSD / metaGoal.targetAmountUSD) * 100
+                    : 0;
+
+                return {
+                  asset: asset as VaultAsset,
+                  data: {
+                    goalId: goalIdStr as string,
+                    progressUSD,
+                    progressPercent,
+                    attachmentCount,
+                    balance: totalBalance.toString(),
+                  },
+                  attachments,
+                };
+              } catch (error) {
+                console.error(
+                  `Error getting progress for goal ${goalIdStr}:`,
+                  error
+                );
+                return {
+                  asset: asset as VaultAsset,
+                  data: {
+                    goalId: goalIdStr as string,
+                    progressUSD: 0,
+                    progressPercent: 0,
+                    attachmentCount: 0,
+                    balance: "0",
+                  },
+                  attachments: [],
+                };
+              }
+            }
+          );
+
+          const progressResults = await Promise.all(progressPromises);
+
+          const participantsSet = new Set<string>();
+          const activeGoals: Record<string, string> = {};
+
+          const goalStatusPromises = progressResults.map(({ asset, data }) =>
+            goalManager
+              .goals(BigInt(data.goalId))
+              .then(
+                (
+                  goal: [
+                    string,
+                    string,
+                    string,
+                    bigint,
+                    bigint,
+                    bigint,
+                    bigint,
+                    boolean,
+                    boolean
+                  ]
+                ) => ({ asset, data, cancelled: goal[7] })
+              )
+              .catch((err) => {
+                console.error(
+                  `Failed to fetch goal status for ${data.goalId}:`,
+                  err
+                );
+                return { asset, data, cancelled: false, statusUnknown: true };
+              })
+          );
+
+          const goalStatuses = await Promise.all(goalStatusPromises);
+
+          for (let i = 0; i < goalStatuses.length; i++) {
+            const { asset, data, cancelled } = goalStatuses[i];
+            const { attachments } = progressResults[i];
+
             if (!cancelled) {
               vaultProgress[asset] = data;
               totalProgressUSD += data.progressUSD;
               activeGoals[asset] = data.goalId;
-              
-              if (data.attachmentCount > 0) {
-                const maxAttachments = Math.min(data.attachmentCount, 50);
-                const attachmentPromises = Array.from({ length: maxAttachments }, (_, i) =>
-                  goalManager.attachmentAt(goalId, i).catch(() => null)
-                );
-                const attachments = await Promise.all(attachmentPromises);
-                attachments.forEach((att) => {
-                  if (att) participantsSet.add(att.owner.toLowerCase());
-                });
-              }
+
+              attachments.forEach((att) => {
+                participantsSet.add(att.owner.toLowerCase());
+              });
             }
-          } catch (error) {
-            console.error(`Error checking goal ${data.goalId}:`, error);
           }
-        }
 
-        const progressPercent =
-          metaGoal.targetAmountUSD > 0
-            ? (totalProgressUSD / metaGoal.targetAmountUSD) * 100
-            : 0;
+          const progressPercent =
+            metaGoal.targetAmountUSD > 0
+              ? (totalProgressUSD / metaGoal.targetAmountUSD) * 100
+              : 0;
 
-        if (Object.keys(activeGoals).length === 0) {
-          // Clean up database if no active goals remain
-          try {
-            await collection.deleteOne({ metaGoalId: metaGoal.metaGoalId });
-          } catch (error) {
-            console.error(`Error cleaning up cancelled meta goal ${metaGoal.metaGoalId}:`, error);
+          if (Object.keys(activeGoals).length === 0) {
+            // Clean up database if no active goals remain
+            try {
+              await collection.deleteOne({ metaGoalId: metaGoal.metaGoalId });
+            } catch (error) {
+              console.error(
+                `Error cleaning up cancelled meta goal ${metaGoal.metaGoalId}:`,
+                error
+              );
+            }
+            return null;
           }
-          return null;
-        }
 
-        // Update database if some goals were cancelled or participants changed
-        const participantsArray = Array.from(participantsSet);
-        const needsUpdate = 
-          Object.keys(activeGoals).length !== Object.keys(metaGoal.onChainGoals).length ||
-          JSON.stringify((metaGoal as MetaGoal & { participants?: string[] }).participants?.sort()) !== JSON.stringify(participantsArray.sort());
+          // Update database if some goals were cancelled or participants changed
+          const participantsArray = Array.from(participantsSet);
+          const needsUpdate =
+            Object.keys(activeGoals).length !==
+              Object.keys(metaGoal.onChainGoals).length ||
+            JSON.stringify(
+              (
+                metaGoal as MetaGoal & { participants?: string[] }
+              ).participants?.sort()
+            ) !== JSON.stringify(participantsArray.sort());
 
-        if (needsUpdate) {
-          try {
-            await collection.updateOne(
-              { metaGoalId: metaGoal.metaGoalId },
-              { 
-                $set: { 
-                  onChainGoals: activeGoals, 
-                  participants: participantsArray,
-                  updatedAt: new Date().toISOString() 
-                } 
-              }
-            );
-          } catch (error) {
-            console.error(`Error updating meta goal ${metaGoal.metaGoalId}:`, error);
+          if (needsUpdate) {
+            try {
+              await collection.updateOne(
+                { metaGoalId: metaGoal.metaGoalId },
+                {
+                  $set: {
+                    onChainGoals: activeGoals,
+                    participants: participantsArray,
+                    updatedAt: new Date().toISOString(),
+                  },
+                }
+              );
+            } catch (error) {
+              console.error(
+                `Error updating meta goal ${metaGoal.metaGoalId}:`,
+                error
+              );
+            }
           }
-        }
 
-        return {
-          ...metaGoal,
-          onChainGoals: activeGoals,
-          totalProgressUSD,
-          progressPercent,
-          vaultProgress,
-          participants: Array.from(participantsSet),
-          userBalance: "0",
-          userBalanceUSD: "0.00",
-        };
-      })
-    );
+          let userBalance = BigInt(0);
+          let userBalanceUSD = 0;
 
-    const validGoals = goalsWithProgress.filter(goal => goal !== null);
+          if (creatorAddress || participantAddress) {
+            const targetUser = (creatorAddress ||
+              participantAddress)!.toLowerCase();
+
+            for (let i = 0; i < progressResults.length; i++) {
+              const { asset, attachments } = progressResults[i];
+              const { cancelled } = goalStatuses[i];
+              if (cancelled) continue;
+              const vaultConfig = VAULTS[asset];
+              attachments.forEach((att) => {
+                if (att.owner.toLowerCase() === targetUser) {
+                  userBalance += att.currentValue;
+                  userBalanceUSD += parseFloat(
+                    ethers.formatUnits(att.currentValue, vaultConfig.decimals)
+                  );
+                }
+              });
+            }
+          }
+
+          return {
+            ...metaGoal,
+            onChainGoals: activeGoals,
+            totalProgressUSD,
+            progressPercent,
+            vaultProgress,
+            participants: Array.from(participantsSet),
+            userBalance: userBalance.toString(),
+            userBalanceUSD: userBalanceUSD.toFixed(2),
+          };
+        })
+      );
+
+    const validGoals = goalsWithProgress.filter((goal) => goal !== null);
     return NextResponse.json(validGoals);
   } catch (error) {
     console.error("Get meta-goals error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<CreateMultiVaultGoalResponse | ErrorResponse>> {
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<CreateMultiVaultGoalResponse | ErrorResponse>> {
   try {
     const body: CreateMultiVaultGoalRequest = await request.json();
     const { name, targetAmountUSD, targetDate, creatorAddress, vaults } = body;
 
     if (!name || !targetAmountUSD || !creatorAddress) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
     }
 
     if (!isValidAddress(creatorAddress)) {
-      return NextResponse.json({ error: "Invalid creator address" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid creator address" },
+        { status: 400 }
+      );
     }
 
     const provider = createProvider();
     const backendWallet = createBackendWallet(provider);
-    const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+    const goalManager = new ethers.Contract(
+      CONTRACTS.GOAL_MANAGER,
+      GOAL_MANAGER_ABI,
+      backendWallet
+    );
 
-    const targetVaults = vaults === "all" ? Object.keys(VAULTS) as VaultAsset[] : vaults;
+    const targetVaults =
+      vaults === "all" ? (Object.keys(VAULTS) as VaultAsset[]) : vaults;
     const metaGoalId = uuidv4();
-    const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
-    const txHashes: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
+    const onChainGoals: Record<VaultAsset, string> = {} as Record<
+      VaultAsset,
+      string
+    >;
+    const txHashes: Record<VaultAsset, string> = {} as Record<
+      VaultAsset,
+      string
+    >;
 
     for (const asset of targetVaults) {
       const vaultConfig = VAULTS[asset];
-      const targetAmountWei = ethers.parseUnits(targetAmountUSD.toString(), vaultConfig.decimals);
-      
+      const targetAmountWei = ethers.parseUnits(
+        targetAmountUSD.toString(),
+        vaultConfig.decimals
+      );
+
       let parsedTargetDate;
       if (targetDate) {
         const targetDateMs = new Date(targetDate).getTime();
         const targetDateSeconds = Math.floor(targetDateMs / 1000);
-        const minAllowedDate = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
-        parsedTargetDate = Math.max(targetDateSeconds, minAllowedDate + (24 * 60 * 60));
+        const minAllowedDate =
+          Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+        parsedTargetDate = Math.max(
+          targetDateSeconds,
+          minAllowedDate + 24 * 60 * 60
+        );
       } else {
         parsedTargetDate = getContractCompliantTargetDate();
       }
@@ -307,8 +487,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<CreateMul
       );
 
       const receipt = await tx.wait();
-      const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
-      
+      const goalEvent = findEventInLogs(
+        receipt.logs,
+        goalManager,
+        "GoalCreated"
+      );
+
       if (goalEvent) {
         onChainGoals[asset] = goalEvent.args.goalId.toString();
         txHashes[asset] = tx.hash;
@@ -339,7 +523,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<CreateMul
   } catch (error) {
     console.error("Create multi-vault goal error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 }
     );
   }
