@@ -137,11 +137,13 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           progressUSD: number;
           progressPercent: number;
           attachmentCount: number;
+          balance: string;
         }> = {} as Record<VaultAsset, {
           goalId: string;
           progressUSD: number;
           progressPercent: number;
           attachmentCount: number;
+          balance: string;
         }>;
 
         let totalProgressUSD = 0;
@@ -150,20 +152,47 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           async ([asset, goalIdStr]: [string, unknown]) => {
             try {
               const goalId = BigInt(goalIdStr as string);
-              const [, percentBps] = await goalManager.getGoalProgressFull(goalId);
-              const progressUSD = (Number(percentBps) / 10000) * metaGoal.targetAmountUSD;
-              const progressPercent = Number(percentBps) / 100;
+              const vaultConfig = VAULTS[asset as VaultAsset];
+              const vault = new ethers.Contract(vaultConfig.address, [
+                "function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)"
+              ], provider);
+              
               const attachmentCount = Number(await goalManager.attachmentCount(goalId));
+              let totalBalance = BigInt(0);
+              const attachments: Array<{ owner: string; depositId: bigint; currentValue: bigint }> = [];
+              
+              if (attachmentCount > 0) {
+                const attachmentPromises = Array.from({ length: attachmentCount }, (_, i) =>
+                  goalManager.attachmentAt(goalId, i)
+                    .then((att: { owner: string; depositId: bigint }) => vault.getUserDeposit(att.owner, att.depositId)
+                      .then(([, currentValue]: [bigint, bigint]) => ({ owner: att.owner, depositId: att.depositId, currentValue }))
+                    )
+                    .catch(() => null)
+                );
+                
+                const results = await Promise.all(attachmentPromises);
+                results.forEach(result => {
+                  if (result) {
+                    attachments.push(result);
+                    totalBalance += result.currentValue;
+                  }
+                });
+              }
+              
+              const progressUSD = parseFloat(ethers.formatUnits(totalBalance, vaultConfig.decimals));
+              const progressPercent = metaGoal.targetAmountUSD > 0 ? (progressUSD / metaGoal.targetAmountUSD) * 100 : 0;
 
               return {
                 asset: asset as VaultAsset,
-                data: { goalId: goalIdStr as string, progressUSD, progressPercent, attachmentCount },
+                data: { goalId: goalIdStr as string, progressUSD, progressPercent, attachmentCount, balance: totalBalance.toString() },
+                attachments,
               };
             } catch (error) {
               console.error(`Error getting progress for goal ${goalIdStr}:`, error);
               return {
                 asset: asset as VaultAsset,
-                data: { goalId: goalIdStr as string, progressUSD: 0, progressPercent: 0, attachmentCount: 0 },
+                data: { goalId: goalIdStr as string, progressUSD: 0, progressPercent: 0, attachmentCount: 0, balance: "0" },
+                attachments: [],
               };
             }
           }
@@ -173,30 +202,26 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
         
         const participantsSet = new Set<string>();
         const activeGoals: Record<string, string> = {};
+        const goalStatusPromises = progressResults.map(({ asset, data }) => 
+          goalManager.goals(BigInt(data.goalId))
+            .then((goal: [string, string, string, bigint, bigint, bigint, bigint, boolean, boolean]) => ({ asset, data, cancelled: goal[7] }))
+            .catch(() => ({ asset, data, cancelled: true }))
+        );
         
-        for (const { asset, data } of progressResults) {
-          try {
-            const goalId = BigInt(data.goalId);
-            const [, , , , , , , cancelled] = await goalManager.goals(goalId);
+        const goalStatuses = await Promise.all(goalStatusPromises);
+        
+        for (let i = 0; i < goalStatuses.length; i++) {
+          const { asset, data, cancelled } = goalStatuses[i];
+          const { attachments } = progressResults[i];
+          
+          if (!cancelled) {
+            vaultProgress[asset] = data;
+            totalProgressUSD += data.progressUSD;
+            activeGoals[asset] = data.goalId;
             
-            if (!cancelled) {
-              vaultProgress[asset] = data;
-              totalProgressUSD += data.progressUSD;
-              activeGoals[asset] = data.goalId;
-              
-              if (data.attachmentCount > 0) {
-                const maxAttachments = Math.min(data.attachmentCount, 50);
-                const attachmentPromises = Array.from({ length: maxAttachments }, (_, i) =>
-                  goalManager.attachmentAt(goalId, i).catch(() => null)
-                );
-                const attachments = await Promise.all(attachmentPromises);
-                attachments.forEach((att) => {
-                  if (att) participantsSet.add(att.owner.toLowerCase());
-                });
-              }
-            }
-          } catch (error) {
-            console.error(`Error checking goal ${data.goalId}:`, error);
+            attachments.forEach((att) => {
+              participantsSet.add(att.owner.toLowerCase());
+            });
           }
         }
 
@@ -238,6 +263,23 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           }
         }
 
+        let userBalance = BigInt(0);
+        let userBalanceUSD = 0;
+        
+        if (creatorAddress || participantAddress) {
+          const targetUser = (creatorAddress || participantAddress)!.toLowerCase();
+          
+          for (const { asset, attachments } of progressResults) {
+            const vaultConfig = VAULTS[asset];
+            attachments.forEach((att) => {
+              if (att.owner.toLowerCase() === targetUser) {
+                userBalance += att.currentValue;
+                userBalanceUSD += parseFloat(ethers.formatUnits(att.currentValue, vaultConfig.decimals));
+              }
+            });
+          }
+        }
+
         return {
           ...metaGoal,
           onChainGoals: activeGoals,
@@ -245,8 +287,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           progressPercent,
           vaultProgress,
           participants: Array.from(participantsSet),
-          userBalance: "0",
-          userBalanceUSD: "0.00",
+          userBalance: userBalance.toString(),
+          userBalanceUSD: userBalanceUSD.toFixed(2),
         };
       })
     );

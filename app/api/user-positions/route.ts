@@ -41,9 +41,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<unknown>> 
       }
       return await handleGetMyGroups(userAddress);
     }
-    if (action === "leaderboard-stats") {
-      const limit = parseInt(searchParams.get("limit") || "100");
-      const offset = parseInt(searchParams.get("offset") || "0");
+    if (action === "leaderboard-stats" || action === "leaderboard") {
+      const limit = parseInt(searchParams.get("limit") || searchParams.get("start") || "100");
+      const offset = parseInt(searchParams.get("offset") || searchParams.get("start") || "0");
       return await handleGetLeaderboardStatsGET(limit, offset);
     }
 
@@ -85,8 +85,8 @@ export async function GET(request: NextRequest): Promise<NextResponse<unknown>> 
     const response: ConsolidatedUserResponse = {
       userAddress: userAddress!,
       totalValueUSD: totalValueUSD.toFixed(2),
-      leaderboardScore: leaderboardScore.toString(),
-      formattedLeaderboardScore: formatAmountForDisplay(leaderboardScore.toString(), 6, 2),
+      leaderboardScore: totalValueUSD.toFixed(2),
+      formattedLeaderboardScore: totalValueUSD.toFixed(2),
       leaderboardRank: rank,
       assetBalances,
     };
@@ -828,13 +828,8 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
 
   const [users] = await leaderboard.getTopRange(start, end);
 
-  const scores = await Promise.all(
-    users.map((address: string) => leaderboard.getUserScore(address))
-  );
-
   const leaderboardData = await Promise.all(
-    users.map(async (address: string, index: number) => {
-      const score = scores[index];
+    users.map(async (address: string) => {
       const vaultResults = await Promise.all(
         Object.entries(VAULTS).map(async ([assetName, vaultConfig]) => {
           const { assetBalance } = await depositService.processVaultDeposits(
@@ -857,30 +852,31 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
         }
       });
 
-      let rank: number | null = null;
-      try {
-        rank = await blockchainService.getUserLeaderboardRank(address, score);
-      } catch (error) {
-        console.error(`Failed to get rank for ${address}:`, error);
-      }
-
       return {
-        rank: start + index + 1,
         userAddress: address,
-        totalValueUSD: totalValueUSD.toFixed(2),
-        leaderboardScore: score.toString(),
-        formattedLeaderboardScore: formatAmountForDisplay(score.toString(), 6, 2),
-        leaderboardRank: rank ?? start + index + 1,
+        totalValueUSD,
         assetBalances,
       };
     })
   );
 
+  leaderboardData.sort((a, b) => b.totalValueUSD - a.totalValueUSD);
+
+  const rankedUsers = leaderboardData.map((user, index) => ({
+    rank: start + index + 1,
+    userAddress: user.userAddress,
+    totalValueUSD: user.totalValueUSD.toFixed(2),
+    leaderboardScore: user.totalValueUSD.toFixed(2),
+    formattedLeaderboardScore: user.totalValueUSD.toFixed(2),
+    leaderboardRank: start + index + 1,
+    assetBalances: user.assetBalances,
+  }));
+
   return NextResponse.json({
     totalUsers,
     limit,
     offset,
-    users: leaderboardData,
+    users: rankedUsers,
   });
 }
 
