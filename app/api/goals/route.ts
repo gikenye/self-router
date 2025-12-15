@@ -269,7 +269,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
         if (creatorAddress || participantAddress) {
           const targetUser = (creatorAddress || participantAddress)!.toLowerCase();
           
-          for (const { asset, attachments } of progressResults) {
+          for (let i =0; i<  progressResults.length; i++) {
+            const {asset, attachments} = progressResults[i];
+            const {cancelled}=goalStatuses[i];
+            if (cancelled) continue;
             const vaultConfig = VAULTS[asset];
             attachments.forEach((att) => {
               if (att.owner.toLowerCase() === targetUser) {

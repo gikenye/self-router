@@ -42,7 +42,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<unknown>> 
       return await handleGetMyGroups(userAddress);
     }
     if (action === "leaderboard-stats" || action === "leaderboard") {
-      const limit = parseInt(searchParams.get("limit") || searchParams.get("start") || "100");
+      const limit = parseInt(searchParams.get("limit") ||  "100");
       const offset = parseInt(searchParams.get("offset") || searchParams.get("start") || "0");
       return await handleGetLeaderboardStatsGET(limit, offset);
     }
@@ -814,10 +814,8 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
 
   const topLength = await leaderboard.getTopListLength();
   const totalUsers = Number(topLength);
-  const start = Math.min(offset, totalUsers);
-  const end = Math.min(offset + limit, totalUsers);
 
-  if (start >= totalUsers) {
+  if (offset >= totalUsers) {
     return NextResponse.json({
       totalUsers,
       limit,
@@ -826,10 +824,10 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
     });
   }
 
-  const [users] = await leaderboard.getTopRange(start, end);
+  const [allUsers] = await leaderboard.getTopRange(0, totalUsers);
 
   const leaderboardData = await Promise.all(
-    users.map(async (address: string) => {
+    allUsers.map(async (address: string) => {
       const vaultResults = await Promise.all(
         Object.entries(VAULTS).map(async ([assetName, vaultConfig]) => {
           const { assetBalance } = await depositService.processVaultDeposits(
@@ -862,13 +860,15 @@ async function handleGetLeaderboardStatsGET(limit: number, offset: number) {
 
   leaderboardData.sort((a, b) => b.totalValueUSD - a.totalValueUSD);
 
-  const rankedUsers = leaderboardData.map((user, index) => ({
-    rank: start + index + 1,
+  const paginatedData = leaderboardData.slice(offset, offset + limit);
+
+  const rankedUsers = paginatedData.map((user, index) => ({
+    rank: offset + index + 1,
     userAddress: user.userAddress,
     totalValueUSD: user.totalValueUSD.toFixed(2),
     leaderboardScore: user.totalValueUSD.toFixed(2),
     formattedLeaderboardScore: user.totalValueUSD.toFixed(2),
-    leaderboardRank: start + index + 1,
+    leaderboardRank: offset + index + 1,
     assetBalances: user.assetBalances,
   }));
 
