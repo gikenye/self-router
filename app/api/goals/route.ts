@@ -390,6 +390,9 @@ export async function GET(
             }
           }
 
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+          const inviteLink = `${baseUrl}/goals/${metaGoal.metaGoalId}`;
+
           return {
             ...metaGoal,
             onChainGoals: activeGoals,
@@ -399,6 +402,7 @@ export async function GET(
             participants: Array.from(participantsSet),
             userBalance: userBalance.toString(),
             userBalanceUSD: userBalanceUSD.toFixed(2),
+            inviteLink,
           };
         })
       );

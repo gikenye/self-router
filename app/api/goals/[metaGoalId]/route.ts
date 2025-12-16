@@ -12,6 +12,8 @@ export async function GET(
 ): Promise<NextResponse<Partial<MetaGoalWithProgress> | ErrorResponse>> {
   try {
     const { metaGoalId } = params;
+    const { searchParams } = new URL(request.url);
+    const userAddress = searchParams.get("userAddress");
 
     if (!metaGoalId || typeof metaGoalId !== 'string' || metaGoalId.length > 100) {
       return NextResponse.json({ error: "Invalid metaGoalId" }, { status: 400 });
@@ -32,6 +34,18 @@ export async function GET(
       metaGoal = await collection.findOne({ metaGoalId: result.metaGoal.metaGoalId });
       if (!metaGoal) {
         return NextResponse.json({ error: "Meta-goal not found" }, { status: 404 });
+      }
+    }
+
+    // Access control for private goals
+    if (metaGoal.isPublic === false && userAddress) {
+      const normalizedUser = userAddress.toLowerCase();
+      const isCreator = metaGoal.creatorAddress.toLowerCase() === normalizedUser;
+      const isParticipant = metaGoal.participants?.includes(normalizedUser);
+      const isInvited = metaGoal.invitedUsers?.includes(normalizedUser);
+      
+      if (!isCreator && !isParticipant && !isInvited) {
+        return NextResponse.json({ error: "Access denied. This is a private goal." }, { status: 403 });
       }
     }
 
@@ -80,6 +94,9 @@ export async function GET(
     const overallProgressPercent = metaGoal.targetAmountUSD > 0 ? 
       (totalProgressUSD / metaGoal.targetAmountUSD) * 100 : 0;
 
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const inviteLink = `${baseUrl}/goals/${metaGoalId}`;
+
     return NextResponse.json({
       metaGoalId,
       name: metaGoal.name,
@@ -89,6 +106,7 @@ export async function GET(
       totalProgressUSD,
       progressPercent: Math.min(overallProgressPercent, 100),
       vaultProgress,
+      inviteLink,
     });
   } catch (error) {
     console.error("Get meta-goal progress error:", error);

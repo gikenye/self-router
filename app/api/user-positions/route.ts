@@ -121,11 +121,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<unknown |
         return await handleGetGroupGoalDetails(request);
       case "cancel-goal":
         return await handleCancelGoal(request);
+      case "invite-to-goal":
+        return await handleInviteToGoal(request);
       case "leaderboard-stats":
         return await handleGetLeaderboardStats(request);
       default:
         return NextResponse.json(
-          { error: "Invalid action. Supported: create-goal, create-group-goal, join-goal, allocate, group-goal-members, group-goal-details, cancel-goal, leaderboard-stats" },
+          { error: "Invalid action. Supported: create-goal, create-group-goal, join-goal, allocate, group-goal-members, group-goal-details, cancel-goal, invite-to-goal, leaderboard-stats" },
           { status: 400 }
         );
     }
@@ -175,7 +177,8 @@ async function handleCreateGoal(request: NextRequest) {
   const nonce = await backendWallet.getNonce();
   const txPromises = targetVaults.map(async (asset, index) => {
     const vaultConfig = VAULTS[asset];
-    const targetAmountWei = ethers.parseUnits(targetAmountUSD.toString(), vaultConfig.decimals);
+    const normalizedAmount = parseFloat(targetAmountUSD.toString()).toFixed(vaultConfig.decimals);
+    const targetAmountWei = ethers.parseUnits(normalizedAmount, vaultConfig.decimals);
     const tx = await goalManager.createGoalFor(creatorAddress, vaultConfig.address, targetAmountWei, parsedTargetDate, name, { nonce: nonce + index });
     const receipt = await tx.wait();
     const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
@@ -248,7 +251,8 @@ async function handleCreateGroupGoal(request: NextRequest) {
   const nonce = await backendWallet.getNonce();
   const txPromises = targetVaults.map(async (asset, index) => {
     const vaultConfig = VAULTS[asset];
-    const targetAmountWei = ethers.parseUnits(targetAmountUSD.toString(), vaultConfig.decimals);
+    const normalizedAmount = parseFloat(targetAmountUSD.toString()).toFixed(vaultConfig.decimals);
+    const targetAmountWei = ethers.parseUnits(normalizedAmount, vaultConfig.decimals);
     const tx = await goalManager.createGoalFor(creatorAddress, vaultConfig.address, targetAmountWei, parsedTargetDate, name, { nonce: nonce + index });
     const receipt = await tx.wait();
     const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
@@ -263,7 +267,7 @@ async function handleCreateGroupGoal(request: NextRequest) {
     }
   });
 
-  const metaGoal: MetaGoal & { isPublic?: boolean; participants?: string[] } = {
+  const metaGoal: MetaGoal = {
     metaGoalId,
     name,
     targetAmountUSD,
@@ -272,12 +276,13 @@ async function handleCreateGroupGoal(request: NextRequest) {
     onChainGoals,
     isPublic: isPublic ?? true,
     participants: [creatorAddress.toLowerCase()],
+    invitedUsers: isPublic ? undefined : [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
   const collection = await getMetaGoalsCollection();
-  await collection.insertOne(metaGoal as MetaGoal);
+  await collection.insertOne(metaGoal);
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const shareLink = `${baseUrl}/goals/${metaGoalId}`;
@@ -938,17 +943,65 @@ async function handleGetPublicGoals() {
   return NextResponse.json({ total: goals.length, goals });
 }
 
+async function handleInviteToGoal(request: NextRequest) {
+  const body = await request.json();
+  const { metaGoalId, inviterAddress, inviteeAddresses } = body;
+
+  if (!metaGoalId || !inviterAddress || !inviteeAddresses || !Array.isArray(inviteeAddresses)) {
+    return NextResponse.json(
+      { error: "Missing required fields: metaGoalId, inviterAddress, inviteeAddresses (array)" },
+      { status: 400 }
+    );
+  }
+
+  const collection = await getMetaGoalsCollection();
+  const metaGoal = await collection.findOne({ metaGoalId });
+
+  if (!metaGoal) {
+    return NextResponse.json({ error: "Goal not found" }, { status: 404 });
+  }
+
+  if (metaGoal.creatorAddress.toLowerCase() !== inviterAddress.toLowerCase()) {
+    return NextResponse.json({ error: "Only goal creator can invite users" }, { status: 403 });
+  }
+
+  if (metaGoal.isPublic !== false) {
+    return NextResponse.json({ error: "Can only invite to private goals" }, { status: 400 });
+  }
+
+  const normalizedInvitees = inviteeAddresses.map((addr: string) => addr.toLowerCase());
+  
+  await collection.updateOne(
+    { metaGoalId },
+    { 
+      $addToSet: { invitedUsers: { $each: normalizedInvitees } },
+      $set: { updatedAt: new Date().toISOString() }
+    }
+  );
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const shareLink = `${baseUrl}/goals/${metaGoalId}`;
+
+  return NextResponse.json({ 
+    success: true, 
+    metaGoalId, 
+    invitedUsers: normalizedInvitees,
+    shareLink
+  });
+}
+
 async function handleGetMyGroups(userAddress: string) {
   const collection = await getMetaGoalsCollection();
   const userGroups = await collection.find({ 
     $or: [
       { participants: { $in: [userAddress.toLowerCase()] } },
-      { creatorAddress: userAddress.toLowerCase() }
+      { creatorAddress: userAddress.toLowerCase() },
+      { invitedUsers: { $in: [userAddress.toLowerCase()] } }
     ],
     name: { $ne: "quicksave" }
   }).toArray();
 
-  const goals = userGroups.map((goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
+  const goals = userGroups.map((goal: MetaGoal) => ({
     metaGoalId: goal.metaGoalId,
     name: goal.name,
     targetAmountUSD: goal.targetAmountUSD,

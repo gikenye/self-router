@@ -73,6 +73,11 @@ export async function getMetaGoalsCollection(): Promise<Collection<MetaGoal>> {
   return database.collection<MetaGoal>("meta_goals");
 }
 
+export async function getUserXPCollection(): Promise<Collection<import("./types").UserXP>> {
+  const database = await connectToDatabase();
+  return database.collection<import("./types").UserXP>("user_xp");
+}
+
 export async function closeConnection(): Promise<void> {
   if (client) {
     await client.close();
