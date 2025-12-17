@@ -49,18 +49,6 @@ export class XPService {
     );
     await this.awardXP(metaGoal, contributions);
 
-    //Atomically mark as processing to prevent race conditions
-    const updateResult = await metaGoalsCollection.updateOne(
-      {
-        metaGoalId,
-        xpAwarded: { $ne: true },
-      },
-      { $set: { xpAwarded: true, updatedAt: new Date().toISOString() } }
-    );
-    if (updateResult.modifiedCount === 0) {
-      return { awarded: false };
-    }
-
     return { awarded: true, recipients: contributions };
   }
 
