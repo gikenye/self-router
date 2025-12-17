@@ -99,6 +99,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
             ? (totalProgressUSD / metaGoal.targetAmountUSD) * 100
             : 0;
 
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const inviteLink = `${baseUrl}/goals/${metaGoal.metaGoalId}`;
+
         return {
           ...metaGoal,
           totalProgressUSD,
@@ -107,6 +110,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<MetaGoalWi
           participants: Array.from(participantsSet),
           userBalance: "0",
           userBalanceUSD: "0.00",
+          inviteLink,
         };
       })
     );

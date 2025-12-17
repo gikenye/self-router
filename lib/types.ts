@@ -15,6 +15,8 @@ export interface AllocateResponse {
   shares: string;
   formattedShares: string;
   allocationTxHash: string;
+  goalCompleted?: boolean;
+  metaGoalId?: string;
 }
 
 export interface GoalAttachment {
@@ -165,7 +167,24 @@ export interface MetaGoal {
   targetDate: string;
   creatorAddress: string;
   onChainGoals: Partial<Record<VaultAsset, string>>; // asset -> goalId mapping
+  isPublic?: boolean;
+  participants?: string[];
+  invitedUsers?: string[]; // For private goals
+  xpAwarded?: boolean; // Track if XP has been awarded for completed goal
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserXP {
+  userAddress: string;
+  totalXP: number;
+  xpHistory: Array<{
+    metaGoalId: string;
+    goalName: string;
+    xpEarned: number;
+    contributionUSD: number;
+    completedAt: string;
+  }>;
   updatedAt: string;
 }
 
