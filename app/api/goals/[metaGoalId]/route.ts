@@ -38,7 +38,10 @@ export async function GET(
     }
 
     // Access control for private goals
-    if (metaGoal.isPublic === false && userAddress) {
+    if (metaGoal.isPublic === false) {
+      if (!userAddress) {
+        return NextResponse.json({ error: "Authentication required for private goals." }, { status: 401 });
+      }
       const normalizedUser = userAddress.toLowerCase();
       const isCreator = metaGoal.creatorAddress.toLowerCase() === normalizedUser;
       const isParticipant = metaGoal.participants?.includes(normalizedUser);

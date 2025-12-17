@@ -15,6 +15,8 @@ export interface AllocateResponse {
   shares: string;
   formattedShares: string;
   allocationTxHash: string;
+  goalCompleted?: boolean;
+  metaGoalId?: string;
 }
 
 export interface GoalAttachment {

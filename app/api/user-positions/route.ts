@@ -2,14 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";
 import { VAULTS, CONTRACTS, GOAL_MANAGER_ABI } from "../../../lib/constants";
-import { createProvider, createBackendWallet, formatAmountForDisplay, getContractCompliantTargetDate, waitForTransactionReceipt, findEventInLogs } from "../../../lib/utils";
+import {
+  createProvider,
+  createBackendWallet,
+  formatAmountForDisplay,
+  getContractCompliantTargetDate,
+  waitForTransactionReceipt,
+  findEventInLogs,
+} from "../../../lib/utils";
 import { getMetaGoalsCollection } from "../../../lib/database";
 import { BlockchainService } from "../../../lib/services/blockchain.service";
 import { DepositService } from "../../../lib/services/deposit.service";
 import { RequestValidator } from "../../../lib/validators/request.validator";
-import type { ErrorResponse, AssetBalance, VaultAsset, MetaGoal } from "../../../lib/types";
+import type {
+  ErrorResponse,
+  AssetBalance,
+  VaultAsset,
+  MetaGoal,
+} from "../../../lib/types";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 interface ConsolidatedUserResponse {
   userAddress: string;
@@ -20,7 +32,9 @@ interface ConsolidatedUserResponse {
   assetBalances: AssetBalance[];
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse<unknown>> {
+export async function GET(
+  request: NextRequest
+): Promise<NextResponse<unknown>> {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
@@ -37,13 +51,18 @@ export async function GET(request: NextRequest): Promise<NextResponse<unknown>> 
     if (action === "my-groups") {
       const userAddress = searchParams.get("userAddress");
       if (!userAddress) {
-        return NextResponse.json({ error: "userAddress required" }, { status: 400 });
+        return NextResponse.json(
+          { error: "userAddress required" },
+          { status: 400 }
+        );
       }
       return await handleGetMyGroups(userAddress);
     }
     if (action === "leaderboard-stats" || action === "leaderboard") {
-      const limit = parseInt(searchParams.get("limit") ||  "100");
-      const offset = parseInt(searchParams.get("offset") || searchParams.get("start") || "0");
+      const limit = parseInt(searchParams.get("limit") || "100");
+      const offset = parseInt(
+        searchParams.get("offset") || searchParams.get("start") || "0"
+      );
       return await handleGetLeaderboardStatsGET(limit, offset);
     }
 
@@ -58,18 +77,29 @@ export async function GET(request: NextRequest): Promise<NextResponse<unknown>> 
     const blockchainService = new BlockchainService(provider);
     const depositService = new DepositService(blockchainService);
 
-    const leaderboardScore = await blockchainService.getLeaderboard().getUserScore(userAddress!);
-    const rank = await blockchainService.getUserLeaderboardRank(userAddress!, leaderboardScore);
+    const leaderboardScore = await blockchainService
+      .getLeaderboard()
+      .getUserScore(userAddress!);
+    const rank = await blockchainService.getUserLeaderboardRank(
+      userAddress!,
+      leaderboardScore
+    );
 
-    const vaultPromises = Object.entries(VAULTS).map(async ([assetName, vaultConfig]) => {
-      const { deposits, assetBalance } = await depositService.processVaultDeposits(
-        vaultConfig.address,
-        assetName,
-        userAddress!,
-        vaultConfig
-      );
-      return { deposits, assetBalance: assetBalance.depositCount > 0 ? assetBalance : null };
-    });
+    const vaultPromises = Object.entries(VAULTS).map(
+      async ([assetName, vaultConfig]) => {
+        const { deposits, assetBalance } =
+          await depositService.processVaultDeposits(
+            vaultConfig.address,
+            assetName,
+            userAddress!,
+            vaultConfig
+          );
+        return {
+          deposits,
+          assetBalance: assetBalance.depositCount > 0 ? assetBalance : null,
+        };
+      }
+    );
 
     const vaultResults = await Promise.all(vaultPromises);
     const assetBalances: AssetBalance[] = [];
@@ -95,13 +125,17 @@ export async function GET(request: NextRequest): Promise<NextResponse<unknown>> 
   } catch (error) {
     console.error("❌ User positions API error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<unknown | ErrorResponse>> {
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<unknown | ErrorResponse>> {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
@@ -127,14 +161,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<unknown |
         return await handleGetLeaderboardStats(request);
       default:
         return NextResponse.json(
-          { error: "Invalid action. Supported: create-goal, create-group-goal, join-goal, allocate, group-goal-members, group-goal-details, cancel-goal, invite-to-goal, leaderboard-stats" },
+          {
+            error:
+              "Invalid action. Supported: create-goal, create-group-goal, join-goal, allocate, group-goal-members, group-goal-details, cancel-goal, invite-to-goal, leaderboard-stats",
+          },
           { status: 400 }
         );
     }
   } catch (error) {
     console.error("❌ POST method error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
       { status: 500 }
     );
   }
@@ -146,7 +185,9 @@ async function handleCreateGoal(request: NextRequest) {
 
   if (!name || !targetAmountUSD || !creatorAddress) {
     return NextResponse.json(
-      { error: "Missing required fields: name, targetAmountUSD, creatorAddress" },
+      {
+        error: "Missing required fields: name, targetAmountUSD, creatorAddress",
+      },
       { status: 400 }
     );
   }
@@ -158,18 +199,29 @@ async function handleCreateGoal(request: NextRequest) {
 
   const provider = createProvider();
   const backendWallet = createBackendWallet(provider);
-  const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+  const goalManager = new ethers.Contract(
+    CONTRACTS.GOAL_MANAGER,
+    GOAL_MANAGER_ABI,
+    backendWallet
+  );
 
-  const targetVaults: VaultAsset[] = vaults === "all" ? (Object.keys(VAULTS) as VaultAsset[]) : vaults;
+  const targetVaults: VaultAsset[] =
+    vaults === "all" ? (Object.keys(VAULTS) as VaultAsset[]) : vaults;
   const metaGoalId = uuidv4();
-  const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
+  const onChainGoals: Record<VaultAsset, string> = {} as Record<
+    VaultAsset,
+    string
+  >;
   const txHashes: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
 
   let parsedTargetDate;
   if (targetDate) {
     const targetDateSeconds = Math.floor(new Date(targetDate).getTime() / 1000);
     const minAllowedDate = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-    parsedTargetDate = Math.max(targetDateSeconds, minAllowedDate + 24 * 60 * 60);
+    parsedTargetDate = Math.max(
+      targetDateSeconds,
+      minAllowedDate + 24 * 60 * 60
+    );
   } else {
     parsedTargetDate = getContractCompliantTargetDate();
   }
@@ -177,12 +229,28 @@ async function handleCreateGoal(request: NextRequest) {
   const nonce = await backendWallet.getNonce();
   const txPromises = targetVaults.map(async (asset, index) => {
     const vaultConfig = VAULTS[asset];
-    const normalizedAmount = parseFloat(targetAmountUSD.toString()).toFixed(vaultConfig.decimals);
-    const targetAmountWei = ethers.parseUnits(normalizedAmount, vaultConfig.decimals);
-    const tx = await goalManager.createGoalFor(creatorAddress, vaultConfig.address, targetAmountWei, parsedTargetDate, name, { nonce: nonce + index });
+    const normalizedAmount = parseFloat(targetAmountUSD.toString()).toFixed(
+      vaultConfig.decimals
+    );
+    const targetAmountWei = ethers.parseUnits(
+      normalizedAmount,
+      vaultConfig.decimals
+    );
+    const tx = await goalManager.createGoalFor(
+      creatorAddress,
+      vaultConfig.address,
+      targetAmountWei,
+      parsedTargetDate,
+      name,
+      { nonce: nonce + index }
+    );
     const receipt = await tx.wait();
     const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
-    return { asset, goalId: goalEvent?.args.goalId.toString() || "", txHash: tx.hash };
+    return {
+      asset,
+      goalId: goalEvent?.args.goalId.toString() || "",
+      txHash: tx.hash,
+    };
   });
 
   const results = await Promise.all(txPromises);
@@ -211,16 +279,31 @@ async function handleCreateGoal(request: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const shareLink = `${baseUrl}/goals/${metaGoalId}`;
 
-  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes, shareLink });
+  return NextResponse.json({
+    success: true,
+    metaGoalId,
+    onChainGoals,
+    txHashes,
+    shareLink,
+  });
 }
 
 async function handleCreateGroupGoal(request: NextRequest) {
   const body = await request.json();
-  const { name, targetAmountUSD, targetDate, creatorAddress, vaults, isPublic } = body;
+  const {
+    name,
+    targetAmountUSD,
+    targetDate,
+    creatorAddress,
+    vaults,
+    isPublic,
+  } = body;
 
   if (!name || !targetAmountUSD || !creatorAddress) {
     return NextResponse.json(
-      { error: "Missing required fields: name, targetAmountUSD, creatorAddress" },
+      {
+        error: "Missing required fields: name, targetAmountUSD, creatorAddress",
+      },
       { status: 400 }
     );
   }
@@ -232,18 +315,29 @@ async function handleCreateGroupGoal(request: NextRequest) {
 
   const provider = createProvider();
   const backendWallet = createBackendWallet(provider);
-  const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+  const goalManager = new ethers.Contract(
+    CONTRACTS.GOAL_MANAGER,
+    GOAL_MANAGER_ABI,
+    backendWallet
+  );
 
-  const targetVaults: VaultAsset[] = vaults === "all" ? (Object.keys(VAULTS) as VaultAsset[]) : vaults;
+  const targetVaults: VaultAsset[] =
+    vaults === "all" ? (Object.keys(VAULTS) as VaultAsset[]) : vaults;
   const metaGoalId = uuidv4();
-  const onChainGoals: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
+  const onChainGoals: Record<VaultAsset, string> = {} as Record<
+    VaultAsset,
+    string
+  >;
   const txHashes: Record<VaultAsset, string> = {} as Record<VaultAsset, string>;
 
   let parsedTargetDate;
   if (targetDate) {
     const targetDateSeconds = Math.floor(new Date(targetDate).getTime() / 1000);
     const minAllowedDate = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-    parsedTargetDate = Math.max(targetDateSeconds, minAllowedDate + 24 * 60 * 60);
+    parsedTargetDate = Math.max(
+      targetDateSeconds,
+      minAllowedDate + 24 * 60 * 60
+    );
   } else {
     parsedTargetDate = getContractCompliantTargetDate();
   }
@@ -251,12 +345,28 @@ async function handleCreateGroupGoal(request: NextRequest) {
   const nonce = await backendWallet.getNonce();
   const txPromises = targetVaults.map(async (asset, index) => {
     const vaultConfig = VAULTS[asset];
-    const normalizedAmount = parseFloat(targetAmountUSD.toString()).toFixed(vaultConfig.decimals);
-    const targetAmountWei = ethers.parseUnits(normalizedAmount, vaultConfig.decimals);
-    const tx = await goalManager.createGoalFor(creatorAddress, vaultConfig.address, targetAmountWei, parsedTargetDate, name, { nonce: nonce + index });
+    const normalizedAmount = parseFloat(targetAmountUSD.toString()).toFixed(
+      vaultConfig.decimals
+    );
+    const targetAmountWei = ethers.parseUnits(
+      normalizedAmount,
+      vaultConfig.decimals
+    );
+    const tx = await goalManager.createGoalFor(
+      creatorAddress,
+      vaultConfig.address,
+      targetAmountWei,
+      parsedTargetDate,
+      name,
+      { nonce: nonce + index }
+    );
     const receipt = await tx.wait();
     const goalEvent = findEventInLogs(receipt.logs, goalManager, "GoalCreated");
-    return { asset, goalId: goalEvent?.args.goalId.toString() || "", txHash: tx.hash };
+    return {
+      asset,
+      goalId: goalEvent?.args.goalId.toString() || "",
+      txHash: tx.hash,
+    };
   });
 
   const results = await Promise.all(txPromises);
@@ -287,7 +397,13 @@ async function handleCreateGroupGoal(request: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const shareLink = `${baseUrl}/goals/${metaGoalId}`;
 
-  return NextResponse.json({ success: true, metaGoalId, onChainGoals, txHashes, shareLink });
+  return NextResponse.json({
+    success: true,
+    metaGoalId,
+    onChainGoals,
+    txHashes,
+    shareLink,
+  });
 }
 
 async function handleJoinGoal(request: NextRequest) {
@@ -296,14 +412,19 @@ async function handleJoinGoal(request: NextRequest) {
 
   if (!goalId || !userAddress || !depositTxHash || !asset) {
     return NextResponse.json(
-      { error: "Missing required fields: goalId, userAddress, depositTxHash, asset" },
+      {
+        error:
+          "Missing required fields: goalId, userAddress, depositTxHash, asset",
+      },
       { status: 400 }
     );
   }
 
   if (!depositTxHash.match(/^0x[0-9a-fA-F]{64}$/)) {
     return NextResponse.json(
-      { error: `Invalid depositTxHash format. Received: "${depositTxHash}" (length: ${depositTxHash.length}). Must be a valid 66-character hex transaction hash (0x + 64 hex chars)` },
+      {
+        error: `Invalid depositTxHash format. Received: "${depositTxHash}" (length: ${depositTxHash.length}). Must be a valid 66-character hex transaction hash (0x + 64 hex chars)`,
+      },
       { status: 400 }
     );
   }
@@ -321,34 +442,57 @@ async function handleJoinGoal(request: NextRequest) {
 
   const receipt = await waitForTransactionReceipt(provider, depositTxHash);
   if (!receipt || !receipt.status) {
-    return NextResponse.json({ error: "Deposit transaction not found or failed" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Deposit transaction not found or failed" },
+      { status: 400 }
+    );
   }
 
   const blockchainService = new BlockchainService(provider);
   const vault = blockchainService.getVault(vaultConfig.address);
   const depositEvent = findEventInLogs(receipt.logs, vault, "Deposited");
 
-  if (!depositEvent || depositEvent.args.user.toLowerCase() !== userAddress.toLowerCase()) {
-    return NextResponse.json({ error: "Invalid deposit transaction" }, { status: 400 });
+  if (
+    !depositEvent ||
+    depositEvent.args.user.toLowerCase() !== userAddress.toLowerCase()
+  ) {
+    return NextResponse.json(
+      { error: "Invalid deposit transaction" },
+      { status: 400 }
+    );
   }
 
   const goalManager = blockchainService.getGoalManager(backendWallet);
   const leaderboard = blockchainService.getLeaderboard(backendWallet);
 
   const [attachTx, scoreTx] = await Promise.all([
-    goalManager.attachDepositsOnBehalf(goalId, userAddress, [depositEvent.args.depositId.toString()]),
-    leaderboard.recordDepositOnBehalf(userAddress, depositEvent.args.amount.toString()),
+    goalManager.attachDepositsOnBehalf(goalId, userAddress, [
+      depositEvent.args.depositId.toString(),
+    ]),
+    leaderboard.recordDepositOnBehalf(
+      userAddress,
+      depositEvent.args.amount.toString()
+    ),
   ]);
 
   await Promise.all([attachTx.wait(), scoreTx.wait()]);
 
   const collection = await getMetaGoalsCollection();
-  const metaGoal = await collection.findOne({ [`onChainGoals.${asset}`]: goalId }) as (MetaGoal & { participants?: string[] }) | null;
-  
-  if (metaGoal && metaGoal.participants && !metaGoal.participants.includes(userAddress.toLowerCase())) {
+  const metaGoal = (await collection.findOne({
+    [`onChainGoals.${asset}`]: goalId,
+  })) as (MetaGoal & { participants?: string[] }) | null;
+
+  if (
+    metaGoal &&
+    metaGoal.participants &&
+    !metaGoal.participants.includes(userAddress.toLowerCase())
+  ) {
     await collection.updateOne(
       { metaGoalId: metaGoal.metaGoalId },
-      { $addToSet: { participants: userAddress.toLowerCase() }, $set: { updatedAt: new Date().toISOString() } }
+      {
+        $addToSet: { participants: userAddress.toLowerCase() },
+        $set: { updatedAt: new Date().toISOString() },
+      }
     );
   }
 
@@ -357,7 +501,11 @@ async function handleJoinGoal(request: NextRequest) {
     goalId,
     depositId: depositEvent.args.depositId.toString(),
     amount: depositEvent.args.amount.toString(),
-    formattedAmount: formatAmountForDisplay(depositEvent.args.amount.toString(), vaultConfig.decimals, 4),
+    formattedAmount: formatAmountForDisplay(
+      depositEvent.args.amount.toString(),
+      vaultConfig.decimals,
+      4
+    ),
     attachTxHash: attachTx.hash,
   });
 }
@@ -375,7 +523,9 @@ async function handleAllocate(request: NextRequest) {
 
   if (!txHash.match(/^0x[0-9a-fA-F]{64}$/)) {
     return NextResponse.json(
-      { error: `Invalid txHash format. Received: "${txHash}" (length: ${txHash.length}). Must be a valid 66-character hex transaction hash (0x + 64 hex chars)` },
+      {
+        error: `Invalid txHash format. Received: "${txHash}" (length: ${txHash.length}). Must be a valid 66-character hex transaction hash (0x + 64 hex chars)`,
+      },
       { status: 400 }
     );
   }
@@ -393,7 +543,10 @@ async function handleAllocate(request: NextRequest) {
 
   const receipt = await waitForTransactionReceipt(provider, txHash);
   if (!receipt || !receipt.status) {
-    return NextResponse.json({ error: "Transaction not found or failed" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Transaction not found or failed" },
+      { status: 400 }
+    );
   }
 
   const blockchainService = new BlockchainService(provider);
@@ -401,14 +554,20 @@ async function handleAllocate(request: NextRequest) {
   const depositEvent = findEventInLogs(receipt.logs, vault, "Deposited");
 
   if (!depositEvent) {
-    return NextResponse.json({ error: "Failed to parse deposit event" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to parse deposit event" },
+      { status: 500 }
+    );
   }
 
   if (depositEvent.args.user.toLowerCase() !== userAddress.toLowerCase()) {
-    return NextResponse.json({
-      error: "User mismatch",
-      details: `Deposit belongs to ${depositEvent.args.user}, but request is for ${userAddress}`,
-    }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "User mismatch",
+        details: `Deposit belongs to ${depositEvent.args.user}, but request is for ${userAddress}`,
+      },
+      { status: 400 }
+    );
   }
 
   const goalManager = blockchainService.getGoalManager();
@@ -420,9 +579,16 @@ async function handleAllocate(request: NextRequest) {
     : await goalManager.getQuicksaveGoal(vaultConfig.address, userAddress);
 
   if (attachedGoalId.toString() === "0") {
-    const createTx = await goalManagerWrite.createQuicksaveGoalFor(userAddress, vaultConfig.address);
+    const createTx = await goalManagerWrite.createQuicksaveGoalFor(
+      userAddress,
+      vaultConfig.address
+    );
     const createReceipt = await createTx.wait();
-    const goalEvent = findEventInLogs(createReceipt.logs, goalManagerWrite, "GoalCreated");
+    const goalEvent = findEventInLogs(
+      createReceipt.logs,
+      goalManagerWrite,
+      "GoalCreated"
+    );
     if (goalEvent) {
       attachedGoalId = goalEvent.args.goalId;
     }
@@ -431,71 +597,108 @@ async function handleAllocate(request: NextRequest) {
   if (attachedGoalId !== BigInt(0)) {
     const goalInfo = await goalManager.goals(attachedGoalId);
     const [, , goalVault, , , , , cancelled, completed] = goalInfo;
-    
+
     if (goalVault.toLowerCase() !== vaultConfig.address.toLowerCase()) {
-      return NextResponse.json({
-        success: false,
-        error: "Vault mismatch",
-        details: `Goal ${attachedGoalId} is for vault ${goalVault}, but deposit is in vault ${vaultConfig.address}`,
-        depositId: depositEvent.args.depositId.toString(),
-        goalId: attachedGoalId.toString(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Vault mismatch",
+          details: `Goal ${attachedGoalId} is for vault ${goalVault}, but deposit is in vault ${vaultConfig.address}`,
+          depositId: depositEvent.args.depositId.toString(),
+          goalId: attachedGoalId.toString(),
+        },
+        { status: 400 }
+      );
     }
 
     if (cancelled) {
-      return NextResponse.json({
-        success: false,
-        error: "Goal is cancelled",
-        depositId: depositEvent.args.depositId.toString(),
-        goalId: attachedGoalId.toString(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Goal is cancelled",
+          depositId: depositEvent.args.depositId.toString(),
+          goalId: attachedGoalId.toString(),
+        },
+        { status: 400 }
+      );
     }
 
     if (completed) {
-      return NextResponse.json({
-        success: false,
-        error: "Goal is already completed",
-        depositId: depositEvent.args.depositId.toString(),
-        goalId: attachedGoalId.toString(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Goal is already completed",
+          depositId: depositEvent.args.depositId.toString(),
+          goalId: attachedGoalId.toString(),
+        },
+        { status: 400 }
+      );
     }
 
-    const existingGoalId = await goalManager.depositToGoal(ethers.solidityPackedKeccak256(["address", "uint256"], [userAddress, depositEvent.args.depositId]));
+    const existingGoalId = await goalManager.depositToGoal(
+      ethers.solidityPackedKeccak256(
+        ["address", "uint256"],
+        [userAddress, depositEvent.args.depositId]
+      )
+    );
     if (existingGoalId !== BigInt(0)) {
-      return NextResponse.json({
-        success: false,
-        error: "Deposit already attached to another goal",
-        details: `Deposit ${depositEvent.args.depositId} is already attached to goal ${existingGoalId}`,
-        depositId: depositEvent.args.depositId.toString(),
-        goalId: attachedGoalId.toString(),
-        existingGoalId: existingGoalId.toString(),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Deposit already attached to another goal",
+          details: `Deposit ${depositEvent.args.depositId} is already attached to goal ${existingGoalId}`,
+          depositId: depositEvent.args.depositId.toString(),
+          goalId: attachedGoalId.toString(),
+          existingGoalId: existingGoalId.toString(),
+        },
+        { status: 400 }
+      );
     }
 
     try {
-      const vaultContract = new ethers.Contract(vaultConfig.address, ["function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)", "function depositCount(address) view returns (uint256)"], provider);
+      const vaultContract = new ethers.Contract(
+        vaultConfig.address,
+        [
+          "function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)",
+          "function depositCount(address) view returns (uint256)",
+        ],
+        provider
+      );
       const depositCount = await vaultContract.depositCount(userAddress);
-      
+
       if (depositEvent.args.depositId >= depositCount) {
-        return NextResponse.json({
-          success: false,
-          error: "Invalid deposit ID",
-          details: `Deposit ID ${depositEvent.args.depositId} is out of range. User has ${depositCount} deposits (IDs 0-${depositCount - 1})`,
-          depositId: depositEvent.args.depositId.toString(),
-          goalId: attachedGoalId.toString(),
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid deposit ID",
+            details: `Deposit ID ${
+              depositEvent.args.depositId
+            } is out of range. User has ${depositCount} deposits (IDs 0-${
+              depositCount - 1
+            })`,
+            depositId: depositEvent.args.depositId.toString(),
+            goalId: attachedGoalId.toString(),
+          },
+          { status: 400 }
+        );
       }
 
-      const [shares] = await vaultContract.getUserDeposit(userAddress, depositEvent.args.depositId);
-      
+      const [shares] = await vaultContract.getUserDeposit(
+        userAddress,
+        depositEvent.args.depositId
+      );
+
       if (shares === BigInt(0)) {
-        return NextResponse.json({
-          success: false,
-          error: "Deposit not found in vault",
-          details: `Deposit ${depositEvent.args.depositId} does not exist for user ${userAddress} in vault ${vaultConfig.address}`,
-          depositId: depositEvent.args.depositId.toString(),
-          goalId: attachedGoalId.toString(),
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Deposit not found in vault",
+            details: `Deposit ${depositEvent.args.depositId} does not exist for user ${userAddress} in vault ${vaultConfig.address}`,
+            depositId: depositEvent.args.depositId.toString(),
+            goalId: attachedGoalId.toString(),
+          },
+          { status: 400 }
+        );
       }
 
       const attachTx = await goalManagerWrite.attachDepositsOnBehalf(
@@ -505,14 +708,20 @@ async function handleAllocate(request: NextRequest) {
       );
       await attachTx.wait();
     } catch (error) {
-      console.log("Attachment failed:", error instanceof Error ? error.message : String(error));
-      return NextResponse.json({
-        success: false,
-        error: "Attachment failed",
-        details: error instanceof Error ? error.message : "Attachment failed",
-        depositId: depositEvent.args.depositId.toString(),
-        goalId: attachedGoalId.toString(),
-      }, { status: 400 });
+      console.log(
+        "Attachment failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Attachment failed",
+          details: error instanceof Error ? error.message : "Attachment failed",
+          depositId: depositEvent.args.depositId.toString(),
+          goalId: attachedGoalId.toString(),
+        },
+        { status: 400 }
+      );
     }
   }
 
@@ -524,7 +733,11 @@ async function handleAllocate(request: NextRequest) {
     depositId: depositEvent.args.depositId.toString(),
     goalId: attachedGoalId.toString(),
     shares: depositEvent.args.shares.toString(),
-    formattedShares: formatAmountForDisplay(depositEvent.args.shares.toString(), vaultConfig.decimals, 4),
+    formattedShares: formatAmountForDisplay(
+      depositEvent.args.shares.toString(),
+      vaultConfig.decimals,
+      4
+    ),
     allocationTxHash: txHash,
   });
 }
@@ -534,19 +747,28 @@ async function handleGetGroupGoalMembers(request: NextRequest) {
   const { metaGoalId } = body;
 
   if (!metaGoalId) {
-    return NextResponse.json({ error: "Missing required field: metaGoalId" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing required field: metaGoalId" },
+      { status: 400 }
+    );
   }
 
   const collection = await getMetaGoalsCollection();
-  const metaGoal = await collection.findOne({ metaGoalId }) as (MetaGoal & { cachedMembers?: unknown; lastSync?: string }) | null;
+  const metaGoal = (await collection.findOne({ metaGoalId })) as
+    | (MetaGoal & { cachedMembers?: unknown; lastSync?: string })
+    | null;
 
   if (!metaGoal) {
-    return NextResponse.json({ error: "Group goal not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Group goal not found" },
+      { status: 404 }
+    );
   }
 
   const CACHE_TTL_MS = 5 * 60 * 1000;
-  const isCacheValid = metaGoal.lastSync && 
-    (Date.now() - new Date(metaGoal.lastSync).getTime()) < CACHE_TTL_MS;
+  const isCacheValid =
+    metaGoal.lastSync &&
+    Date.now() - new Date(metaGoal.lastSync).getTime() < CACHE_TTL_MS;
 
   let memberData;
   if (isCacheValid && metaGoal.cachedMembers) {
@@ -555,7 +777,9 @@ async function handleGetGroupGoalMembers(request: NextRequest) {
     memberData = await fetchGroupGoalMembers(metaGoal);
     await collection.updateOne(
       { metaGoalId },
-      { $set: { cachedMembers: memberData, lastSync: new Date().toISOString() } }
+      {
+        $set: { cachedMembers: memberData, lastSync: new Date().toISOString() },
+      }
     );
   }
 
@@ -569,28 +793,46 @@ async function handleGetGroupGoalMembers(request: NextRequest) {
 
 async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
   const provider = createProvider();
-  const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, provider);
+  const goalManager = new ethers.Contract(
+    CONTRACTS.GOAL_MANAGER,
+    GOAL_MANAGER_ABI,
+    provider
+  );
 
-  const memberStats: Record<string, {
-    address: string;
-    totalContributionUSD: number;
-    contributionPercent: number;
-    depositCount: number;
-    joinedAt: string;
-  }> = {};
+  const memberStats: Record<
+    string,
+    {
+      address: string;
+      totalContributionUSD: number;
+      contributionPercent: number;
+      depositCount: number;
+      joinedAt: string;
+    }
+  > = {};
 
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     const goalId = BigInt(goalIdStr as string);
     const attachmentCount = await goalManager.attachmentCount(goalId);
-    
+
     const vaultConfig = VAULTS[asset as VaultAsset];
-    const vault = new ethers.Contract(vaultConfig.address, ["function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)"], provider);
+    const vault = new ethers.Contract(
+      vaultConfig.address,
+      [
+        "function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)",
+      ],
+      provider
+    );
 
     for (let i = 0; i < Number(attachmentCount); i++) {
       const attachment = await goalManager.attachmentAt(goalId, i);
       const owner = attachment.owner.toLowerCase();
-      const [, currentValue] = await vault.getUserDeposit(attachment.owner, attachment.depositId);
-      const contributionUSD = parseFloat(formatAmountForDisplay(currentValue.toString(), vaultConfig.decimals));
+      const [, currentValue] = await vault.getUserDeposit(
+        attachment.owner,
+        attachment.depositId
+      );
+      const contributionUSD = parseFloat(
+        formatAmountForDisplay(currentValue.toString(), vaultConfig.decimals)
+      );
 
       if (!memberStats[owner]) {
         memberStats[owner] = {
@@ -598,10 +840,17 @@ async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
           totalContributionUSD: 0,
           contributionPercent: 0,
           depositCount: 0,
-          joinedAt: new Date(Number(attachment.attachedAt) * 1000).toISOString(),
+          joinedAt: new Date(
+            Number(attachment.attachedAt) * 1000
+          ).toISOString(),
         };
-      } else if (new Date(Number(attachment.attachedAt) * 1000) < new Date(memberStats[owner].joinedAt)) {
-        memberStats[owner].joinedAt = new Date(Number(attachment.attachedAt) * 1000).toISOString();
+      } else if (
+        new Date(Number(attachment.attachedAt) * 1000) <
+        new Date(memberStats[owner].joinedAt)
+      ) {
+        memberStats[owner].joinedAt = new Date(
+          Number(attachment.attachedAt) * 1000
+        ).toISOString();
       }
 
       memberStats[owner].totalContributionUSD += contributionUSD;
@@ -609,12 +858,20 @@ async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
     }
   }
 
-  const totalGoalValue = Object.values(memberStats).reduce((sum, m) => sum + m.totalContributionUSD, 0);
-  Object.values(memberStats).forEach(member => {
-    member.contributionPercent = totalGoalValue > 0 ? (member.totalContributionUSD / totalGoalValue) * 100 : 0;
+  const totalGoalValue = Object.values(memberStats).reduce(
+    (sum, m) => sum + m.totalContributionUSD,
+    0
+  );
+  Object.values(memberStats).forEach((member) => {
+    member.contributionPercent =
+      totalGoalValue > 0
+        ? (member.totalContributionUSD / totalGoalValue) * 100
+        : 0;
   });
 
-  const members = Object.values(memberStats).sort((a, b) => b.totalContributionUSD - a.totalContributionUSD);
+  const members = Object.values(memberStats).sort(
+    (a, b) => b.totalContributionUSD - a.totalContributionUSD
+  );
 
   return {
     totalContributedUSD: totalGoalValue,
@@ -643,12 +900,19 @@ async function handleCancelGoal(request: NextRequest) {
   }
 
   if (metaGoal.creatorAddress.toLowerCase() !== userAddress.toLowerCase()) {
-    return NextResponse.json({ error: "Only goal creator can cancel" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Only goal creator can cancel" },
+      { status: 403 }
+    );
   }
 
   const provider = createProvider();
   const backendWallet = createBackendWallet(provider);
-  const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+  const goalManager = new ethers.Contract(
+    CONTRACTS.GOAL_MANAGER,
+    GOAL_MANAGER_ABI,
+    backendWallet
+  );
 
   const cancelledGoals: Record<string, string> = {};
   const errors: Record<string, string> = {};
@@ -658,7 +922,9 @@ async function handleCancelGoal(request: NextRequest) {
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     try {
       const goalId = BigInt(goalIdStr as string);
-      const [, , , , , , , cancelled, completed] = await goalManager.goals(goalId);
+      const [, , , , , , , cancelled, completed] = await goalManager.goals(
+        goalId
+      );
       const attachmentCount = await goalManager.attachmentCount(goalId);
 
       if (cancelled) {
@@ -681,17 +947,20 @@ async function handleCancelGoal(request: NextRequest) {
   }
 
   const remainingGoals: Record<string, string> = {};
-  
+
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     try {
       const goalId = BigInt(goalIdStr as string);
       const [, , , , , , , cancelled] = await goalManager.goals(goalId);
-      
+
       if (!cancelled) {
         remainingGoals[asset] = goalIdStr as string;
       }
     } catch (error) {
-      console.error(`Error checking goal ${goalIdStr} status for asset ${asset}:`, error);
+      console.error(
+        `Error checking goal ${goalIdStr} status for asset ${asset}:`,
+        error
+      );
       statusUnknown.push(asset);
       remainingGoals[asset] = goalIdStr as string;
     }
@@ -703,19 +972,33 @@ async function handleCancelGoal(request: NextRequest) {
     } else {
       await collection.updateOne(
         { metaGoalId },
-        { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
+        {
+          $set: {
+            onChainGoals: remainingGoals,
+            updatedAt: new Date().toISOString(),
+            cachedMembers: [],
+            lastSync: null,
+          },
+        }
       );
     }
-    return NextResponse.json({
-      success: false,
-      error: "Cannot determine on-chain status for some goals",
-      statusUnknown,
-      metaGoalId,
-      cancelledGoals,
-      alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
-      errors: Object.keys(errors).length > 0 ? errors : undefined,
-      remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Cannot determine on-chain status for some goals",
+        statusUnknown,
+        metaGoalId,
+        cancelledGoals,
+        alreadyCancelled:
+          alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
+        errors: Object.keys(errors).length > 0 ? errors : undefined,
+        remainingGoals:
+          Object.keys(remainingGoals).length > 0
+            ? Object.keys(remainingGoals)
+            : undefined,
+      },
+      { status: 500 }
+    );
   }
 
   if (Object.keys(remainingGoals).length === 0) {
@@ -723,17 +1006,29 @@ async function handleCancelGoal(request: NextRequest) {
   } else {
     await collection.updateOne(
       { metaGoalId },
-      { $set: { onChainGoals: remainingGoals, updatedAt: new Date().toISOString(), cachedMembers: [], lastSync: null } }
+      {
+        $set: {
+          onChainGoals: remainingGoals,
+          updatedAt: new Date().toISOString(),
+          cachedMembers: [],
+          lastSync: null,
+        },
+      }
     );
   }
 
   return NextResponse.json({
-    success: Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0,
+    success:
+      Object.keys(cancelledGoals).length > 0 || alreadyCancelled.length > 0,
     metaGoalId,
     cancelledGoals,
-    alreadyCancelled: alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
+    alreadyCancelled:
+      alreadyCancelled.length > 0 ? alreadyCancelled : undefined,
     errors: Object.keys(errors).length > 0 ? errors : undefined,
-    remainingGoals: Object.keys(remainingGoals).length > 0 ? Object.keys(remainingGoals) : undefined,
+    remainingGoals:
+      Object.keys(remainingGoals).length > 0
+        ? Object.keys(remainingGoals)
+        : undefined,
   });
 }
 
@@ -742,20 +1037,33 @@ async function handleGetGroupGoalDetails(request: NextRequest) {
   const { metaGoalId } = body;
 
   if (!metaGoalId) {
-    return NextResponse.json({ error: "Missing required field: metaGoalId" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing required field: metaGoalId" },
+      { status: 400 }
+    );
   }
 
   const collection = await getMetaGoalsCollection();
   const metaGoal = await collection.findOne({ metaGoalId });
 
   if (!metaGoal) {
-    return NextResponse.json({ error: "Group goal not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Group goal not found" },
+      { status: 404 }
+    );
   }
 
   const provider = createProvider();
-  const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, provider);
+  const goalManager = new ethers.Contract(
+    CONTRACTS.GOAL_MANAGER,
+    GOAL_MANAGER_ABI,
+    provider
+  );
 
-  const balances: Record<string, { asset: string; totalBalance: string; formattedBalance: string }> = {};
+  const balances: Record<
+    string,
+    { asset: string; totalBalance: string; formattedBalance: string }
+  > = {};
   const transactions: Array<{
     asset: string;
     userAddress: string;
@@ -768,16 +1076,23 @@ async function handleGetGroupGoalDetails(request: NextRequest) {
   for (const [asset, goalIdStr] of Object.entries(metaGoal.onChainGoals)) {
     const goalId = BigInt(goalIdStr as string);
     const vaultConfig = VAULTS[asset as VaultAsset];
-    const vault = new ethers.Contract(vaultConfig.address, [
-      "function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)"
-    ], provider);
+    const vault = new ethers.Contract(
+      vaultConfig.address,
+      [
+        "function getUserDeposit(address,uint256) view returns (uint256,uint256,uint256,uint256,bool)",
+      ],
+      provider
+    );
 
     let totalBalance = BigInt(0);
     const attachmentCount = await goalManager.attachmentCount(goalId);
 
     for (let i = 0; i < Number(attachmentCount); i++) {
       const attachment = await goalManager.attachmentAt(goalId, i);
-      const [, currentValue] = await vault.getUserDeposit(attachment.owner, attachment.depositId);
+      const [, currentValue] = await vault.getUserDeposit(
+        attachment.owner,
+        attachment.depositId
+      );
       totalBalance += currentValue;
 
       transactions.push({
@@ -785,19 +1100,32 @@ async function handleGetGroupGoalDetails(request: NextRequest) {
         userAddress: attachment.owner,
         depositId: attachment.depositId.toString(),
         currentValue: currentValue.toString(),
-        formattedValue: formatAmountForDisplay(currentValue.toString(), vaultConfig.decimals, 4),
-        attachedAt: new Date(Number(attachment.attachedAt) * 1000).toISOString()
+        formattedValue: formatAmountForDisplay(
+          currentValue.toString(),
+          vaultConfig.decimals,
+          4
+        ),
+        attachedAt: new Date(
+          Number(attachment.attachedAt) * 1000
+        ).toISOString(),
       });
     }
 
     balances[asset] = {
       asset,
       totalBalance: totalBalance.toString(),
-      formattedBalance: formatAmountForDisplay(totalBalance.toString(), vaultConfig.decimals, 4)
+      formattedBalance: formatAmountForDisplay(
+        totalBalance.toString(),
+        vaultConfig.decimals,
+        4
+      ),
     };
   }
 
-  transactions.sort((a, b) => new Date(b.attachedAt).getTime() - new Date(a.attachedAt).getTime());
+  transactions.sort(
+    (a, b) =>
+      new Date(b.attachedAt).getTime() - new Date(a.attachedAt).getTime()
+  );
 
   return NextResponse.json({
     _id: metaGoal._id,
@@ -807,7 +1135,7 @@ async function handleGetGroupGoalDetails(request: NextRequest) {
     targetAmountUSD: metaGoal.targetAmountUSD,
     goalIds: metaGoal.onChainGoals,
     balances,
-    transactions
+    transactions,
   });
 }
 
@@ -893,52 +1221,67 @@ async function handleGetLeaderboardStats(request: NextRequest) {
 
 async function handleGetAllGroupSavings() {
   const collection = await getMetaGoalsCollection();
-  const allGoals = await collection.find({ participants: { $exists: true } }).toArray();
+  const allGoals = await collection
+    .find({ participants: { $exists: true } })
+    .toArray();
 
-  const goals = allGoals.map((goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
-    metaGoalId: goal.metaGoalId,
-    name: goal.name,
-    targetAmountUSD: goal.targetAmountUSD,
-    targetDate: goal.targetDate,
-    creatorAddress: goal.creatorAddress,
-    isPublic: goal.isPublic ?? true,
-    participantCount: goal.participants?.length || 0,
-    createdAt: goal.createdAt,
-  }));
+  const goals = allGoals.map(
+    (goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
+      metaGoalId: goal.metaGoalId,
+      name: goal.name,
+      targetAmountUSD: goal.targetAmountUSD,
+      targetDate: goal.targetDate,
+      creatorAddress: goal.creatorAddress,
+      isPublic: goal.isPublic ?? true,
+      participantCount: goal.participants?.length || 0,
+      createdAt: goal.createdAt,
+    })
+  );
 
   return NextResponse.json({ total: goals.length, goals });
 }
 
 async function handleGetPrivateGoals() {
   const collection = await getMetaGoalsCollection();
-  const privateGoals = await collection.find({ isPublic: false, participants: { $exists: true } }).toArray();
+  const privateGoals = await collection
+    .find({ isPublic: false, participants: { $exists: true } })
+    .toArray();
 
-  const goals = privateGoals.map((goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
-    metaGoalId: goal.metaGoalId,
-    name: goal.name,
-    targetAmountUSD: goal.targetAmountUSD,
-    targetDate: goal.targetDate,
-    creatorAddress: goal.creatorAddress,
-    participantCount: goal.participants?.length || 0,
-    createdAt: goal.createdAt,
-  }));
+  const goals = privateGoals.map(
+    (goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
+      metaGoalId: goal.metaGoalId,
+      name: goal.name,
+      targetAmountUSD: goal.targetAmountUSD,
+      targetDate: goal.targetDate,
+      creatorAddress: goal.creatorAddress,
+      participantCount: goal.participants?.length || 0,
+      createdAt: goal.createdAt,
+    })
+  );
 
   return NextResponse.json({ total: goals.length, goals });
 }
 
 async function handleGetPublicGoals() {
   const collection = await getMetaGoalsCollection();
-  const publicGoals = await collection.find({ $or: [{ isPublic: true }, { isPublic: { $exists: false } }], participants: { $exists: true } }).toArray();
+  const publicGoals = await collection
+    .find({
+      $or: [{ isPublic: true }, { isPublic: { $exists: false } }],
+      participants: { $exists: true },
+    })
+    .toArray();
 
-  const goals = publicGoals.map((goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
-    metaGoalId: goal.metaGoalId,
-    name: goal.name,
-    targetAmountUSD: goal.targetAmountUSD,
-    targetDate: goal.targetDate,
-    creatorAddress: goal.creatorAddress,
-    participantCount: goal.participants?.length || 0,
-    createdAt: goal.createdAt,
-  }));
+  const goals = publicGoals.map(
+    (goal: MetaGoal & { isPublic?: boolean; participants?: string[] }) => ({
+      metaGoalId: goal.metaGoalId,
+      name: goal.name,
+      targetAmountUSD: goal.targetAmountUSD,
+      targetDate: goal.targetDate,
+      creatorAddress: goal.creatorAddress,
+      participantCount: goal.participants?.length || 0,
+      createdAt: goal.createdAt,
+    })
+  );
 
   return NextResponse.json({ total: goals.length, goals });
 }
@@ -947,9 +1290,25 @@ async function handleInviteToGoal(request: NextRequest) {
   const body = await request.json();
   const { metaGoalId, inviterAddress, inviteeAddresses } = body;
 
-  if (!metaGoalId || !inviterAddress || !inviteeAddresses || !Array.isArray(inviteeAddresses)) {
+  if (
+    !metaGoalId ||
+    !inviterAddress ||
+    !inviteeAddresses ||
+    !Array.isArray(inviteeAddresses)
+  ) {
     return NextResponse.json(
-      { error: "Missing required fields: metaGoalId, inviterAddress, inviteeAddresses (array)" },
+      {
+        error:
+          "Missing required fields: metaGoalId, inviterAddress, inviteeAddresses (array)",
+      },
+      { status: 400 }
+    );
+  }
+  const inviterValidation =
+    RequestValidator.validateUserAddress(inviterAddress);
+  if (!inviterValidation.valid) {
+    return NextResponse.json(
+      { error: `Invalid Invitee address: ${inviterValidation.error}` },
       { status: 400 }
     );
   }
@@ -962,44 +1321,54 @@ async function handleInviteToGoal(request: NextRequest) {
   }
 
   if (metaGoal.creatorAddress.toLowerCase() !== inviterAddress.toLowerCase()) {
-    return NextResponse.json({ error: "Only goal creator can invite users" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Only goal creator can invite users" },
+      { status: 403 }
+    );
   }
 
   if (metaGoal.isPublic !== false) {
-    return NextResponse.json({ error: "Can only invite to private goals" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Can only invite to private goals" },
+      { status: 400 }
+    );
   }
 
-  const normalizedInvitees = inviteeAddresses.map((addr: string) => addr.toLowerCase());
-  
+  const normalizedInvitees = inviteeAddresses.map((addr: string) =>
+    addr.toLowerCase()
+  );
+
   await collection.updateOne(
     { metaGoalId },
-    { 
+    {
       $addToSet: { invitedUsers: { $each: normalizedInvitees } },
-      $set: { updatedAt: new Date().toISOString() }
+      $set: { updatedAt: new Date().toISOString() },
     }
   );
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const shareLink = `${baseUrl}/goals/${metaGoalId}`;
 
-  return NextResponse.json({ 
-    success: true, 
-    metaGoalId, 
+  return NextResponse.json({
+    success: true,
+    metaGoalId,
     invitedUsers: normalizedInvitees,
-    shareLink
+    shareLink,
   });
 }
 
 async function handleGetMyGroups(userAddress: string) {
   const collection = await getMetaGoalsCollection();
-  const userGroups = await collection.find({ 
-    $or: [
-      { participants: { $in: [userAddress.toLowerCase()] } },
-      { creatorAddress: userAddress.toLowerCase() },
-      { invitedUsers: { $in: [userAddress.toLowerCase()] } }
-    ],
-    name: { $ne: "quicksave" }
-  }).toArray();
+  const userGroups = await collection
+    .find({
+      $or: [
+        { participants: { $in: [userAddress.toLowerCase()] } },
+        { creatorAddress: userAddress.toLowerCase() },
+        { invitedUsers: { $in: [userAddress.toLowerCase()] } },
+      ],
+      name: { $ne: "quicksave" },
+    })
+    .toArray();
 
   const goals = userGroups.map((goal: MetaGoal) => ({
     metaGoalId: goal.metaGoalId,
@@ -1013,12 +1382,12 @@ async function handleGetMyGroups(userAddress: string) {
     createdAt: goal.createdAt,
   }));
 
-  const publicGoals = goals.filter(g => g.isPublic);
-  const privateGoals = goals.filter(g => !g.isPublic);
+  const publicGoals = goals.filter((g) => g.isPublic);
+  const privateGoals = goals.filter((g) => !g.isPublic);
 
-  return NextResponse.json({ 
+  return NextResponse.json({
     total: goals.length,
     public: { total: publicGoals.length, goals: publicGoals },
-    private: { total: privateGoals.length, goals: privateGoals }
+    private: { total: privateGoals.length, goals: privateGoals },
   });
 }

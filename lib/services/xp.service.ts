@@ -36,10 +36,18 @@ export class XPService {
       goalManager
     );
     await this.awardXP(metaGoal, contributions);
-    await metaGoalsCollection.updateOne(
-      { metaGoalId },
+
+    //Atomically mark as processing to prevent race conditions
+    const updateResult = await metaGoalsCollection.updateOne(
+      {
+        metaGoalId,
+        xpAwarded: { $ne: true },
+      },
       { $set: { xpAwarded: true, updatedAt: new Date().toISOString() } }
     );
+    if (updateResult.modifiedCount === 0) {
+      return { awarded: false };
+    }
 
     return { awarded: true, recipients: contributions };
   }
@@ -52,7 +60,7 @@ export class XPService {
     for (const goalId of Object.values(metaGoal.onChainGoals)) {
       const attachmentCount = await goalManager.attachmentCount(goalId);
       if (attachmentCount === BigInt(0)) continue;
-      
+
       hasAnyProgress = true;
       const [, percentBps] = await goalManager.getGoalProgressFull(goalId);
       if (percentBps < BigInt(10000)) return false;

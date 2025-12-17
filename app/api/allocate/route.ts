@@ -361,6 +361,34 @@ export async function POST(
     );
     await scoreTx.wait();
 
+    // Check if meta-goal is completed
+    let goalCompleted = false;
+    let responseMetaGoalId: string | undefined;
+    
+    if (attachedGoalId !== BigInt(0)) {
+      try {
+        const collection = await getMetaGoalsCollection();
+        const metaGoal = await collection.findOne({ [`onChainGoals.${finalAsset}`]: attachedGoalId.toString() });
+        
+        if (metaGoal) {
+          responseMetaGoalId = metaGoal.metaGoalId;
+          const goalManagerRead = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, provider);
+          let totalProgressUSD = 0;
+          
+          for (const [asset, goalId] of Object.entries(metaGoal.onChainGoals)) {
+            const vaultCfg = VAULTS[asset as VaultAsset];
+            const [totalValue] = await goalManagerRead.getGoalProgressFull(goalId);
+            totalProgressUSD += parseFloat(formatAmountForDisplay(totalValue.toString(), vaultCfg.decimals));
+          }
+          
+          const progressPercent = metaGoal.targetAmountUSD > 0 ? (totalProgressUSD / metaGoal.targetAmountUSD) * 100 : 0;
+          goalCompleted = progressPercent >= 100;
+        }
+      } catch (error) {
+        console.log('Failed to check goal completion:', error);
+      }
+    }
+
     // Return successful response
     const response = {
       success: true,
@@ -369,6 +397,8 @@ export async function POST(
       shares,
       formattedShares: formatAmountForDisplay(shares, vaultConfig.decimals, 4),
       allocationTxHash: txHash,
+      goalCompleted,
+      metaGoalId: responseMetaGoalId,
     };
     
     console.log('📤 Allocate response data:', JSON.stringify(response, null, 2));
