@@ -11,11 +11,17 @@ export class XPService {
     metaGoalId: string
   ): Promise<{ awarded: boolean; recipients?: Record<string, number> }> {
     const metaGoalsCollection = await getMetaGoalsCollection();
-    const metaGoal = await metaGoalsCollection.findOne({ metaGoalId });
 
-    if (!metaGoal || metaGoal.xpAwarded) {
-      return { awarded: false };
-    }
+  //Atomically clain this meta-goal for XP processing
+  const metaGoal =  await metaGoalsCollection.findOneAndUpdate(
+    {metaGoalId, xpAwarded: {$ne:true}},
+    {$set: {xpAwarded: true, updatedAt: new Date().toISOString()}},
+    {returnDocument: 'before'}
+  );
+
+  if (!metaGoal) {
+    return { awarded: false };
+  }
 
     const goalManager = new ethers.Contract(
       CONTRACTS.GOAL_MANAGER,
@@ -28,6 +34,12 @@ export class XPService {
     );
 
     if (!allCompleted) {
+      
+      //revert the flag if goals are not completed
+      await metaGoalsCollection.updateOne(
+        {metaGoalId},
+        {$set: {xpAwarded: false, updatedAt: new Date().toISOString()}}
+      )
       return { awarded: false };
     }
 
