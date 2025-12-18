@@ -130,4 +130,38 @@ export class XPService {
       );
     }
   }
+
+  async awardSelfVerificationXP(walletAddress: string): Promise<{ awarded: boolean; totalXP: number }> {
+    const xpCollection = await getUserXPCollection();
+    const userAddress = walletAddress.toLowerCase();
+    const completedAt = new Date().toISOString();
+    const xpAmount = 2;
+
+    const result = await xpCollection.updateOne(
+      { 
+        userAddress,
+        "xpHistory.goalName": { $ne: "Self Protocol Verification" }
+      },
+      {
+        $inc: { totalXP: xpAmount },
+        $push: {
+          xpHistory: {
+            metaGoalId: "self-verification",
+            goalName: "Self Protocol Verification",
+            xpEarned: xpAmount,
+            contributionUSD: 0,
+            completedAt,
+          },
+        },
+        $set: { updatedAt: completedAt },
+      },
+      { upsert: true }
+    );
+
+    const userXP = await xpCollection.findOne({ userAddress });
+    return { 
+      awarded: result.modifiedCount > 0 || result.upsertedCount > 0,
+      totalXP: userXP?.totalXP || xpAmount
+    };
+  }
 }
