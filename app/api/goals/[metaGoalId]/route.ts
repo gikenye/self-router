@@ -14,6 +14,7 @@ export async function GET(
     const { metaGoalId } = params;
     const { searchParams } = new URL(request.url);
     const userAddress = searchParams.get("userAddress");
+    const invitedBy = searchParams.get("invitedBy");
 
     if (!metaGoalId || typeof metaGoalId !== 'string' || metaGoalId.length > 100) {
       return NextResponse.json({ error: "Invalid metaGoalId" }, { status: 400 });
@@ -47,7 +48,12 @@ export async function GET(
       const isParticipant = metaGoal.participants?.includes(normalizedUser);
       const isInvited = metaGoal.invitedUsers?.includes(normalizedUser);
       
-      if (!isCreator && !isParticipant && !isInvited) {
+      if (invitedBy && !isInvited && !isCreator && !isParticipant) {
+        await collection.updateOne(
+          { metaGoalId },
+          { $addToSet: { invitedUsers: normalizedUser }, $set: { updatedAt: new Date().toISOString() } }
+        );
+      } else if (!isCreator && !isParticipant && !isInvited) {
         return NextResponse.json({ error: "Access denied. This is a private goal." }, { status: 403 });
       }
     }
