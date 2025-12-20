@@ -5,11 +5,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const metaGoalId = url.searchParams.get("id");
   const invitedBy = url.searchParams.get("invitedBy");
 
-  if (!metaGoalId) {
-    return NextResponse.json({ error: "Missing goal ID" }, { status: 400 });
+  if (!metaGoalId || typeof metaGoalId !== 'string' || metaGoalId.trim().length === 0 || metaGoalId.length > 100) {
+    return NextResponse.json({ error: "Invalid metaGoalId" }, { status: 400 });
   }
 
-  const redirectUrl = new URL(`${url.origin}/goals/${metaGoalId}`);
+  const redirectUrl = new URL(`${url.origin}/goals/${metaGoalId.trim()}`);
   if (invitedBy) {
     redirectUrl.searchParams.set("invitedBy", invitedBy);
   }
