@@ -67,6 +67,10 @@ function resolveVaultMetadata(vaultAddress: string): { asset: VaultAsset; decima
   return null;
 }
 
+function isEventLog(event: ethers.Log | ethers.EventLog): event is ethers.EventLog {
+  return "args" in event && "eventName" in event;
+}
+
 function toIsoTimestamp(seconds?: bigint | number | null): string | undefined {
   if (seconds === null || seconds === undefined) {
     return undefined;
@@ -153,7 +157,9 @@ export async function GET(
       return timestamp;
     };
 
-    const buildBase = async (event: ethers.EventLog): Promise<BaseActivity | null> => {
+    const buildBase = async (
+      event: ethers.Log | ethers.EventLog
+    ): Promise<BaseActivity | null> => {
       if (event.blockNumber === null || event.blockNumber === undefined || !event.transactionHash) {
         return null;
       }
@@ -258,7 +264,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -301,7 +307,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -327,7 +333,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -353,7 +359,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -377,7 +383,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -406,7 +412,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -435,7 +441,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -464,7 +470,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -493,7 +499,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -517,7 +523,7 @@ export async function GET(
       activityPromises.push(
         (async (): Promise<ActivityWithLogIndex | null> => {
           const base = await buildBase(event);
-          if (!base || !event.args) {
+          if (!base || !isEventLog(event) || !event.args) {
             return null;
           }
 
@@ -542,7 +548,7 @@ export async function GET(
         activityPromises.push(
           (async (): Promise<ActivityWithLogIndex | null> => {
             const base = await buildBase(event);
-            if (!base || !event.args) {
+            if (!base || !isEventLog(event) || !event.args) {
               return null;
             }
 
@@ -577,7 +583,7 @@ export async function GET(
         activityPromises.push(
           (async (): Promise<ActivityWithLogIndex | null> => {
             const base = await buildBase(event);
-            if (!base || !event.args) {
+            if (!base || !isEventLog(event) || !event.args) {
               return null;
             }
 
