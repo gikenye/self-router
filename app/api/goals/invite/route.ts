@@ -154,9 +154,6 @@ export async function POST(
     const participants = (metaGoal.participants || []).map((participant) =>
       participant.toLowerCase()
     );
-    const invitedUsers = (metaGoal.invitedUsers || []).map((invited) =>
-      invited.toLowerCase()
-    );
     const isCreator =
       metaGoal.creatorAddress.toLowerCase() === normalizedInviter;
     const isParticipant = participants.includes(normalizedInviter);
