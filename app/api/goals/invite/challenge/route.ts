@@ -86,17 +86,10 @@ export async function POST(
     }
 
     const db = await connectToDatabase();
-    const [inviterExists, invitedExists] = await Promise.all([
-      isKnownUser(db, normalizedInviter),
-      isKnownUser(db, normalizedInvited),
-    ]);
+    const inviterExists = await isKnownUser(db, normalizedInviter);
 
     if (!inviterExists) {
       return NextResponse.json({ error: "Inviter not found" }, { status: 403 });
-    }
-
-    if (!invitedExists) {
-      return NextResponse.json({ error: "Invited user not found" }, { status: 404 });
     }
 
     if (

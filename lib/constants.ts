@@ -55,6 +55,8 @@ export const GOAL_MANAGER_ABI = [
   "function attachDeposits(uint256 goalId, uint256[] calldata depositIds) external",
   "function cancelGoal(uint256 goalId) external",
   "function attachDepositsOnBehalf(uint256 goalId, address owner, uint256[] calldata depositIds) external",
+  "function forceAddMember(uint256 goalId, address member) external",
+  "function forceRemoveMember(uint256 goalId, address member) external",
   "function goals(uint256) external view returns (uint256 id, address creator, address vault, uint256 targetAmount, uint256 targetDate, string metadataURI, uint256 createdAt, bool cancelled, bool completed)",
   "function getGoalProgressFull(uint256 goalId) external view returns (uint256 totalValue, uint256 percentBps)",
   "function attachmentCount(uint256 goalId) external view returns (uint256)",

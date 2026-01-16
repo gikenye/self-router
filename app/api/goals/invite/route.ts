@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import type { Db } from "mongodb";
+import { CONTRACTS, GOAL_MANAGER_ABI } from "../../../../lib/constants";
 import { connectToDatabase, getMetaGoalsCollection } from "../../../../lib/database";
-import { isValidAddress } from "../../../../lib/utils";
+import { createBackendWallet, createProvider, isValidAddress } from "../../../../lib/utils";
 import type { ErrorResponse } from "../../../../lib/types";
 
 function buildInviteMessage(params: {
@@ -20,6 +21,25 @@ function buildInviteMessage(params: {
     `nonce: ${params.nonce}`,
     `issuedAt: ${params.issuedAt}`,
   ].join("\n");
+}
+
+function isAlreadyMemberError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const reason = (error as { reason?: unknown }).reason;
+  const shortMessage = (error as { shortMessage?: unknown }).shortMessage;
+  const combined = [message, reason, shortMessage]
+    .filter((value) => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    (combined.includes("already") || combined.includes("exists")) &&
+    (combined.includes("member") || combined.includes("participant"))
+  );
 }
 
 async function isKnownUser(db: Db, address: string): Promise<boolean> {
@@ -168,17 +188,10 @@ export async function POST(
     }
 
     const db = await connectToDatabase();
-    const [inviterExists, invitedExists] = await Promise.all([
-      isKnownUser(db, normalizedInviter),
-      isKnownUser(db, normalizedInvited),
-    ]);
+    const inviterExists = await isKnownUser(db, normalizedInviter);
 
     if (!inviterExists) {
       return NextResponse.json({ error: "Inviter not found" }, { status: 403 });
-    }
-
-    if (!invitedExists) {
-      return NextResponse.json({ error: "Invited user not found" }, { status: 404 });
     }
 
     const nonceStatus = await consumeInviteNonce(db, {
@@ -196,17 +209,30 @@ export async function POST(
       );
     }
 
-    if (
-      participants.includes(normalizedInvited) ||
-      invitedUsers.includes(normalizedInvited)
-    ) {
+    if (participants.includes(normalizedInvited)) {
       return NextResponse.json({ success: true });
+    }
+
+    const provider = createProvider();
+    const backendWallet = createBackendWallet(provider);
+    const goalManager = new ethers.Contract(CONTRACTS.GOAL_MANAGER, GOAL_MANAGER_ABI, backendWallet);
+    const goalIds = Object.values(metaGoal.onChainGoals || {}).filter(Boolean) as string[];
+
+    for (const goalId of goalIds) {
+      try {
+        const tx = await goalManager.forceAddMember(BigInt(goalId), normalizedInvited);
+        await tx.wait();
+      } catch (onChainError) {
+        if (!isAlreadyMemberError(onChainError)) {
+          throw onChainError;
+        }
+      }
     }
 
     await collection.updateOne(
       { metaGoalId },
       {
-        $addToSet: { invitedUsers: normalizedInvited },
+        $addToSet: { invitedUsers: normalizedInvited, participants: normalizedInvited },
         $set: { updatedAt: new Date().toISOString() },
       }
     );
