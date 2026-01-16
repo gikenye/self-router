@@ -17,6 +17,10 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
+interface IERC20Metadata {
+    function decimals() external view returns (uint8);
+}
+
 interface ISupplierVaultMinimal {
     function getUserDeposit(address user, uint256 depositId)
         external
@@ -30,6 +34,7 @@ interface ISupplierVaultMinimal {
         );
 
     function isDepositPledged(address user, uint256 depositId) external view returns (bool);
+    function asset() external view returns (address);
 }
 
 interface ILeaderboard {
@@ -82,6 +87,8 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
     bool public creationPaused;
 
     ILeaderboard public leaderboard;
+    mapping(uint256 => mapping(address => bool)) public isMember;
+    mapping(uint256 => mapping(address => bool)) public isInvited;
 
     // Events
     event GoalCreated(uint256 indexed goalId, address indexed creator, address indexed vault, uint256 targetAmount, uint256 targetDate, string metadataURI);
@@ -95,6 +102,10 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
     event ConfigUpdated(uint256 maxAttachmentsPerGoal, uint256 maxAttachmentsPerUser);
     event NotifierUpdated(address indexed notifier, bool allowed);
     event LeaderboardSet(address leaderboard);
+    event MemberInvited(uint256 indexed goalId, address indexed inviter, address indexed invitee);
+    event InviteRevoked(uint256 indexed goalId, address indexed revoker, address indexed invitee);
+    event MemberJoined(uint256 indexed goalId, address indexed member);
+    event MemberRemoved(uint256 indexed goalId, address indexed member);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -186,6 +197,7 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
         g.completed = false;
 
         emit GoalCreated(goalId, creator, vault, g.targetAmount, g.targetDate, metadataURI);
+        _addMember(goalId, creator);
     }
 
     /**
@@ -204,7 +216,8 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
      * @notice Called by a trusted notifier (e.g., SupplierVault) to auto-attach a new deposit into the user's quicksave goal.
      * If quicksave doesn't exist it is created for user (creator = user).
      */
-    function autoAttachToQuicksave(address user, address vault, uint256 depositId) external {
+    function autoAttachToQuicksave(address user, address vault, uint256 depositId) external nonReentrant {
+        require(!attachmentsPaused, "Attachments paused");
         require(notifiers[msg.sender], "Not authorized notifier");
         require(user != address(0), "Invalid user");
         require(vault != address(0), "Invalid vault");
@@ -238,6 +251,7 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
         }
         require(userCount + depositIds.length <= maxAttachmentsPerUser, "Per-user cap for this goal");
 
+        _addMember(goalId, owner);
         bool isQuicksave = g.targetAmount == 0;
         
         for (uint256 i = 0; i < depositIds.length; i++) {
@@ -258,7 +272,9 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
             emit DepositAttached(goalId, owner, depositId, block.timestamp);
 
             if (address(leaderboard) != address(0)) {
-                try leaderboard.recordDeposit(owner, currentValue) {} catch {}
+                uint8 decimals = IERC20Metadata(vault.asset()).decimals();
+                uint256 normalizedAmount = _normalizeAmount(currentValue, decimals);
+                try leaderboard.recordDeposit(owner, normalizedAmount) {} catch {}
             }
         }
     }
@@ -284,6 +300,7 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
         }
         require(userCount + depositIds.length <= maxAttachmentsPerUser, "Per-user cap for this goal");
 
+        _addMember(goalId, msg.sender);
         bool isQuicksave = g.targetAmount == 0;
         
         for (uint256 i = 0; i < depositIds.length; i++) {
@@ -304,7 +321,9 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
             emit DepositAttached(goalId, msg.sender, depositId, block.timestamp);
 
             if (address(leaderboard) != address(0)) {
-                try leaderboard.recordDeposit(msg.sender, currentValue) {} catch {}
+                uint8 decimals = IERC20Metadata(vault.asset()).decimals();
+                uint256 normalizedAmount = _normalizeAmount(currentValue, decimals);
+                try leaderboard.recordDeposit(msg.sender, normalizedAmount) {} catch {}
             }
         }
     }
@@ -356,6 +375,7 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
         toArr.push(newA);
         bytes32 toKey = _depositKey(toG.vault, msg.sender, depositId);
         depositToGoal[toKey] = toGoalId;
+        _addMember(toGoalId, msg.sender);
 
         emit DepositDetached(fromGoalId, msg.sender, depositId, block.timestamp);
         emit DepositAttached(toGoalId, msg.sender, depositId, block.timestamp);
@@ -442,6 +462,69 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
     }
 
     // ------------------------
+    // Membership / Invites
+    // ------------------------
+
+    function inviteMember(uint256 goalId, address invitee) external nonReentrant {
+        Goal storage g = goals[goalId];
+        require(g.id != 0 && !g.cancelled && !g.completed, "Invalid goal");
+        require(invitee != address(0), "Invalid invitee");
+        require(invitee != g.creator, "Already creator");
+        require(!_isMemberOrCreator(goalId, invitee), "Already member");
+        require(!isInvited[goalId][invitee], "Already invited");
+        require(_canInvite(goalId, msg.sender), "Not permitted");
+
+        isInvited[goalId][invitee] = true;
+        emit MemberInvited(goalId, msg.sender, invitee);
+    }
+
+    function revokeInvite(uint256 goalId, address invitee) external nonReentrant {
+        Goal storage g = goals[goalId];
+        require(g.id != 0 && !g.cancelled && !g.completed, "Invalid goal");
+        require(_canInvite(goalId, msg.sender), "Not permitted");
+        require(isInvited[goalId][invitee], "Not invited");
+
+        isInvited[goalId][invitee] = false;
+        emit InviteRevoked(goalId, msg.sender, invitee);
+    }
+
+    function acceptInvite(uint256 goalId) external nonReentrant {
+        Goal storage g = goals[goalId];
+        require(g.id != 0 && !g.cancelled && !g.completed, "Invalid goal");
+        require(isInvited[goalId][msg.sender], "Not invited");
+
+        isInvited[goalId][msg.sender] = false;
+        _addMember(goalId, msg.sender);
+    }
+
+    function forceAddMember(uint256 goalId, address member) external onlyRole(BACKEND_ROLE) nonReentrant {
+        Goal storage g = goals[goalId];
+        require(g.id != 0 && !g.cancelled && !g.completed, "Invalid goal");
+        require(member != address(0), "Invalid member");
+        _addMember(goalId, member);
+    }
+
+    function forceRemoveMember(uint256 goalId, address member) external onlyRole(BACKEND_ROLE) nonReentrant {
+        Goal storage g = goals[goalId];
+        require(g.id != 0 && !g.cancelled && !g.completed, "Invalid goal");
+        require(member != address(0), "Invalid member");
+        require(member != g.creator, "Cannot remove creator");
+        bool isMemberFlag = isMember[goalId][member];
+        bool isInvitedFlag = isInvited[goalId][member];
+        require(isMemberFlag || isInvitedFlag, "Not a member or invitee");
+
+        if (isMemberFlag) {
+            require(!_hasAttachment(goalId, member), "Member has deposits");
+            isMember[goalId][member] = false;
+            emit MemberRemoved(goalId, member);
+        }
+        if (isInvitedFlag) {
+            isInvited[goalId][member] = false;
+            emit InviteRevoked(goalId, msg.sender, member);
+        }
+    }
+
+    // ------------------------
     // Keeper / Finalization
     // ------------------------
 
@@ -520,6 +603,7 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
 
         quicksaveGoalOf[vault][user] = goalId;
         emit GoalCreated(goalId, user, vault, g.targetAmount, g.targetDate, g.metadataURI);
+        _addMember(goalId, user);
     }
 
     function _attachDepositOnBehalf(uint256 goalId, address owner, uint256 depositId) internal {
@@ -535,6 +619,7 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
         }
         require(userCount + 1 <= maxAttachmentsPerUser, "Per-user cap");
 
+        _addMember(goalId, owner);
         ISupplierVaultMinimal vault = ISupplierVaultMinimal(g.vault);
 
         (, uint256 currentValue, , uint256 lockEnd, ) = vault.getUserDeposit(owner, depositId);
@@ -554,8 +639,55 @@ contract GoalManager is Initializable, AccessControlUpgradeable, ReentrancyGuard
         emit DepositAttached(goalId, owner, depositId, block.timestamp);
 
         if (address(leaderboard) != address(0)) {
-            try leaderboard.recordDeposit(owner, currentValue) {} catch {}
+            uint8 decimals = IERC20Metadata(vault.asset()).decimals();
+            uint256 normalizedAmount = _normalizeAmount(currentValue, decimals);
+            try leaderboard.recordDeposit(owner, normalizedAmount) {} catch {}
         }
+    }
+
+    /**
+     * @notice Normalize amount to 18 decimals for consistent leaderboard scoring
+     * @param amount The raw amount in token's native decimals
+     * @param decimals The token's decimal places
+     * @return The amount normalized to 18 decimals
+     */
+    function _normalizeAmount(uint256 amount, uint8 decimals) internal pure returns (uint256) {
+        if (decimals == 18) {
+            return amount;
+        } else if (decimals < 18) {
+            return amount * (10 ** (18 - decimals));
+        } else {
+            return amount / (10 ** (decimals - 18));
+        }
+    }
+
+    function _addMember(uint256 goalId, address user) internal {
+        if (!isMember[goalId][user]) {
+            isMember[goalId][user] = true;
+            emit MemberJoined(goalId, user);
+        }
+        if (isInvited[goalId][user]) {
+            isInvited[goalId][user] = false;
+        }
+    }
+
+    function _isMemberOrCreator(uint256 goalId, address user) internal view returns (bool) {
+        return isMember[goalId][user] || goals[goalId].creator == user;
+    }
+
+    function _canInvite(uint256 goalId, address user) internal view returns (bool) {
+        if (_isMemberOrCreator(goalId, user)) return true;
+        return _hasAttachment(goalId, user);
+    }
+
+    function _hasAttachment(uint256 goalId, address owner) internal view returns (bool) {
+        Attachment[] storage arr = _attachments[goalId];
+        for (uint256 i = 0; i < arr.length; i++) {
+            if (arr[i].owner == owner) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function _computeGoalValuePaged(Goal storage g, uint256 start, uint256 end) internal view returns (uint256 sum, uint256 counted) {

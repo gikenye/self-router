@@ -141,10 +141,14 @@ export async function GET(
     if (participantAddress) {
       const syncService = new GoalSyncService(provider);
       await syncService.syncUserGoals(participantAddress);
+      const normalizedParticipant = participantAddress.toLowerCase();
 
       metaGoals = await collection
         .find({
-          participants: { $in: [participantAddress.toLowerCase()] },
+          $or: [
+            { participants: { $in: [normalizedParticipant] } },
+            { invitedUsers: { $in: [normalizedParticipant] } },
+          ],
         })
         .toArray();
     } else if (creatorAddress) {
@@ -271,7 +275,11 @@ export async function GET(
 
           const progressResults = await Promise.all(progressPromises);
 
-          const participantsSet = new Set<string>();
+          const participantsSet = new Set<string>(
+            (metaGoal.participants || []).map((participant) =>
+              participant.toLowerCase()
+            )
+          );
           const activeGoals: Record<string, string> = {};
 
           const goalStatusPromises = progressResults.map(({ asset, data }) =>

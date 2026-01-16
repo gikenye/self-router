@@ -6,6 +6,20 @@ import { getMetaGoalsCollection } from "../../../../lib/database";
 import { GoalSyncService } from "../../../../lib/services/goal-sync.service";
 import type { ErrorResponse, VaultAsset, MetaGoalWithProgress } from "../../../../lib/types";
 
+const isGoalNotFoundError = (error: unknown): boolean => {
+  if (!error) {
+    return false;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const reason = (error as { reason?: unknown }).reason;
+  const shortMessage = (error as { shortMessage?: unknown }).shortMessage;
+
+  return [message, reason, shortMessage].some(
+    (value) => typeof value === "string" && value.includes("Not found")
+  );
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { metaGoalId: string } }
@@ -86,7 +100,11 @@ export async function GET(
           const progressUSD = parseFloat(formatAmountForDisplay(totalValue.toString(), vaultConfig.decimals));
           return { asset, goalId, progressUSD, attachmentCount: Number(attachmentCount) };
         } catch (error) {
-          console.error(`Error getting progress for goal ${goalId}:`, error);
+          if (isGoalNotFoundError(error)) {
+            console.warn(`Goal ${goalId} not found on-chain; returning zero progress.`);
+          } else {
+            console.error(`Error getting progress for goal ${goalId}:`, error);
+          }
           return { asset, goalId, progressUSD: 0, attachmentCount: 0 };
         }
       }

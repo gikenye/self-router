@@ -4,6 +4,7 @@ import type { MetaGoal } from "./types";
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let connectionPromise: Promise<Db> | null = null;
+let indexesInitialized = false;
 
 function extractDbNameFromUri(uri: string): string | null {
   const match = uri.match(/\/([^/?]+)(\?|$)/);
@@ -51,6 +52,11 @@ export async function connectToDatabase(): Promise<Db> {
     await client.connect();
     db = client.db(dbName);
 
+    if (!indexesInitialized) {
+      await ensureIndexes(db);
+      indexesInitialized = true;
+    }
+
     if (process.env.LOG_DB_CONNECTION === "true") {
       console.log("✅ Connected to MongoDB");
     }
@@ -64,8 +70,16 @@ export async function connectToDatabase(): Promise<Db> {
     client = null;
     db = null;
     connectionPromise = null;
+    indexesInitialized = false;
     throw error;
   }
+}
+
+async function ensureIndexes(database: Db): Promise<void> {
+  await database.collection("invite_nonces").createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, name: "expiresAt_ttl" }
+  );
 }
 
 export async function getMetaGoalsCollection(): Promise<Collection<MetaGoal>> {
