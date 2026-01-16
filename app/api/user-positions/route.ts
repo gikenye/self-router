@@ -7,6 +7,7 @@ import {
   createBackendWallet,
   formatAmountForDisplay,
   getContractCompliantTargetDate,
+  isValidAddress,
   waitForTransactionReceipt,
   findEventInLogs,
 } from "../../../lib/utils";
@@ -30,6 +31,21 @@ interface ConsolidatedUserResponse {
   formattedLeaderboardScore: string;
   leaderboardRank: number | null;
   assetBalances: AssetBalance[];
+}
+
+interface GroupGoalMember {
+  address: string;
+  totalContributionUSD: number;
+  contributionPercent: number;
+  depositCount: number;
+  joinedAt: string;
+}
+
+interface GroupGoalMembersData {
+  totalContributedUSD: number;
+  progressPercent: number;
+  memberCount: number;
+  members: GroupGoalMember[];
 }
 
 export async function GET(
@@ -783,12 +799,69 @@ async function handleGetGroupGoalMembers(request: NextRequest) {
     );
   }
 
+  const mergedMemberData = mergeGroupGoalMembers(
+    memberData as GroupGoalMembersData,
+    metaGoal
+  );
+
   return NextResponse.json({
     metaGoalId,
     goalName: metaGoal.name,
     targetAmountUSD: metaGoal.targetAmountUSD,
-    ...memberData,
+    ...mergedMemberData,
   });
+}
+
+function mergeGroupGoalMembers(
+  memberData: GroupGoalMembersData,
+  metaGoal: MetaGoal
+): GroupGoalMembersData {
+  const membersByAddress = new Map<string, GroupGoalMember>();
+
+  memberData.members.forEach((member) => {
+    membersByAddress.set(member.address.toLowerCase(), member);
+  });
+
+  const defaultJoinedAt =
+    metaGoal.createdAt || metaGoal.updatedAt || new Date().toISOString();
+
+  const additionalAddresses = new Set<string>();
+  const addAddress = (address?: string) => {
+    if (!address) {
+      return;
+    }
+    const normalized = address.toLowerCase();
+    if (!isValidAddress(normalized)) {
+      return;
+    }
+    additionalAddresses.add(normalized);
+  };
+
+  addAddress(metaGoal.creatorAddress);
+  (metaGoal.participants || []).forEach(addAddress);
+  (metaGoal.invitedUsers || []).forEach(addAddress);
+
+  additionalAddresses.forEach((address) => {
+    if (!membersByAddress.has(address)) {
+      membersByAddress.set(address, {
+        address,
+        totalContributionUSD: 0,
+        contributionPercent: 0,
+        depositCount: 0,
+        joinedAt: defaultJoinedAt,
+      });
+    }
+  });
+
+  const mergedMembers = Array.from(membersByAddress.values()).sort(
+    (a, b) => b.totalContributionUSD - a.totalContributionUSD
+  );
+
+  return {
+    ...memberData,
+    members: mergedMembers,
+    memberCount: mergedMembers.length,
+  };
 }
 
 async function fetchGroupGoalMembers(metaGoal: MetaGoal) {
