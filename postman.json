@@ -1,0 +1,399 @@
+{
+  "info": {
+    "name": "Self Router API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Allocate",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/allocate",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset\": \"cUSD\",\n  \"userAddress\": \"0x...\",\n  \"amount\": \"1000000\",\n  \"txHash\": \"0x...\",\n  \"targetGoalId\": \"1\",\n  \"metaGoalId\": \"uuid\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Goals - Create",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/goals",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"My Goal\",\n  \"targetAmountUSD\": 1000,\n  \"targetDate\": \"2025-12-31\",\n  \"creatorAddress\": \"0x...\",\n  \"vaults\": \"all\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Goals - Get by Creator",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/goals?creatorAddress=0x...",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "goals"],
+          "query": [{"key": "creatorAddress", "value": "0x..."}]
+        }
+      }
+    },
+    {
+      "name": "Goals - Get by Participant",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/goals?participantAddress=0x...",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "goals"],
+          "query": [{"key": "participantAddress", "value": "0x..."}]
+        }
+      }
+    },
+    {
+      "name": "Goals - Get All",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/goals/all?limit=50&skip=0",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "goals", "all"],
+          "query": [{"key": "limit", "value": "50"}, {"key": "skip", "value": "0"}]
+        }
+      }
+    },
+    {
+      "name": "Goals - Get by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/goals/:metaGoalId"
+      }
+    },
+    {
+      "name": "Goals - Attach Deposit",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/goals/attach",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"metaGoalId\": \"uuid\",\n  \"depositVault\": \"0x...\",\n  \"depositId\": \"1\",\n  \"userAddress\": \"0x...\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Goals - Calculate Duration",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/goals/duration",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"targetAmountUSD\": 1000,\n  \"userHabit\": {\n    \"avgDepositFrequency\": 7,\n    \"riskTolerance\": \"medium\"\n  },\n  \"avgDepositAmount\": 100\n}"
+        }
+      }
+    },
+    {
+      "name": "Goals - Expand",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/goals/expand",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"goalId\": \"uuid\",\n  \"newVaults\": [\"cUSD\", \"USDC\"],\n  \"userAddress\": \"0x...\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Goals - Sync from Chain",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/goals/sync",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"goalId\": \"1\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Goals - Sync User Goals",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "{{baseUrl}}/api/goals/sync",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userAddress\": \"0x...\",\n  \"fromBlock\": -5000\n}"
+        }
+      }
+    },
+    {
+      "name": "Leaderboard - Get Range",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/leaderboard?start=0&limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "leaderboard"],
+          "query": [{"key": "start", "value": "0"}, {"key": "limit", "value": "10"}]
+        }
+      }
+    },
+    {
+      "name": "Leaderboard - Get User Score",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/leaderboard?userAddress=0x...",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "leaderboard"],
+          "query": [{"key": "userAddress", "value": "0x..."}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - Get",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?userAddress=0x...",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "userAddress", "value": "0x..."}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - All Group Savings",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=all-group-savings",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "all-group-savings"}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - Private Goals",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=private-goals",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "private-goals"}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - Public Goals",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=public-goals",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "public-goals"}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - My Groups",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=my-groups&userAddress=0x...",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "my-groups"}, {"key": "userAddress", "value": "0x..."}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - Leaderboard Stats",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=leaderboard-stats&limit=100&offset=0",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "leaderboard-stats"}, {"key": "limit", "value": "100"}, {"key": "offset", "value": "0"}]
+        }
+      }
+    },
+    {
+      "name": "User Positions - Create Goal",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=create-goal",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "create-goal"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"My Goal\",\n  \"targetAmountUSD\": 1000,\n  \"targetDate\": \"2025-12-31\",\n  \"creatorAddress\": \"0x...\",\n  \"vaults\": \"all\"\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Create Group Goal",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=create-group-goal",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "create-group-goal"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Group Goal\",\n  \"targetAmountUSD\": 5000,\n  \"targetDate\": \"2025-12-31\",\n  \"creatorAddress\": \"0x...\",\n  \"vaults\": \"all\",\n  \"isPublic\": true\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Join Goal",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=join-goal",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "join-goal"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"goalId\": \"1\",\n  \"userAddress\": \"0x...\",\n  \"depositTxHash\": \"0x...\",\n  \"asset\": \"cUSD\"\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Allocate",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=allocate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "allocate"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"asset\": \"cUSD\",\n  \"userAddress\": \"0x...\",\n  \"amount\": \"1000000\",\n  \"txHash\": \"0x...\",\n  \"targetGoalId\": \"1\"\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Group Goal Members",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=group-goal-members",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "group-goal-members"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"metaGoalId\": \"uuid\"\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Group Goal Details",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=group-goal-details",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "group-goal-details"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"metaGoalId\": \"uuid\"\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Cancel Goal",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=cancel-goal",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "cancel-goal"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"metaGoalId\": \"uuid\",\n  \"userAddress\": \"0x...\"\n}"
+        }
+      }
+    },
+    {
+      "name": "User Positions - Leaderboard Stats (POST)",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/user-positions?action=leaderboard-stats",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "user-positions"],
+          "query": [{"key": "action", "value": "leaderboard-stats"}]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"limit\": 100,\n  \"offset\": 0\n}"
+        }
+      }
+    },
+    {
+      "name": "Verification - Get",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/verification?userAddress=0x...",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "verification"],
+          "query": [{"key": "userAddress", "value": "0x..."}]
+        }
+      }
+    }
+  ]
+}

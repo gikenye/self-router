@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  transpilePackages: ['ethers'],
+};
 
 export default nextConfig;
