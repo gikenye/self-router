@@ -63,6 +63,14 @@ export const GOAL_MANAGER_ABI = [
   "function attachmentAt(uint256 goalId, uint256 index) external view returns (tuple(address owner, uint256 depositId, uint256 attachedAt, bool pledged))",
   "function depositToGoal(bytes32 key) external view returns (uint256)",
   "event GoalCreated(uint256 indexed goalId, address indexed creator, address indexed vault, uint256 targetAmount, uint256 targetDate, string metadataURI)",
+  "event DepositAttached(uint256 indexed goalId, address indexed owner, uint256 indexed depositId, uint256 attachedAt)",
+  "event DepositDetached(uint256 indexed goalId, address indexed owner, uint256 indexed depositId, uint256 detachedAt)",
+  "event AttachmentPledged(uint256 indexed goalId, address indexed owner, uint256 indexed depositId)",
+  "event GoalCompleted(uint256 indexed goalId, uint256 completedAt, uint256 totalValue)",
+  "event MemberInvited(uint256 indexed goalId, address indexed inviter, address indexed invitee)",
+  "event InviteRevoked(uint256 indexed goalId, address indexed revoker, address indexed invitee)",
+  "event MemberJoined(uint256 indexed goalId, address indexed member)",
+  "event MemberRemoved(uint256 indexed goalId, address indexed member)",
   "event GoalCancelled(uint256 indexed goalId)",
 
 ];

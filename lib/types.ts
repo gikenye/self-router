@@ -154,6 +154,87 @@ export interface UserPositionsResponse {
   goals: UserGoal[];
 }
 
+export type ActivityType =
+  | "deposit"
+  | "goal_created"
+  | "deposit_attached"
+  | "deposit_detached"
+  | "attachment_pledged"
+  | "member_invited"
+  | "invite_revoked"
+  | "member_joined"
+  | "member_removed";
+
+export interface ActivityItemBase {
+  id: string;
+  type: ActivityType;
+  txHash: string;
+  blockNumber: number;
+  timestamp: string;
+}
+
+export interface DepositActivity extends ActivityItemBase {
+  type: "deposit";
+  vault: string;
+  asset: VaultAsset | string;
+  depositId: string;
+  amountWei: string;
+  amountUSD: string;
+  sharesWei: string;
+  sharesUSD: string;
+  lockTier?: string;
+  source: "onramp" | "direct";
+  onrampTxHash?: string;
+}
+
+export interface GoalCreatedActivity extends ActivityItemBase {
+  type: "goal_created";
+  goalId: string;
+  vault: string;
+  asset: VaultAsset | string | null;
+  targetAmountWei: string;
+  targetAmountUSD: string;
+  targetDate: string;
+  metadataURI: string;
+}
+
+export interface DepositAttachmentActivity extends ActivityItemBase {
+  type: "deposit_attached" | "deposit_detached" | "attachment_pledged";
+  goalId: string;
+  depositId: string;
+  attachedAt?: string;
+  detachedAt?: string;
+}
+
+export interface MemberInviteActivity extends ActivityItemBase {
+  type: "member_invited" | "invite_revoked";
+  goalId: string;
+  inviter: string;
+  invitee: string;
+  role: "inviter" | "invitee";
+}
+
+export interface MemberStatusActivity extends ActivityItemBase {
+  type: "member_joined" | "member_removed";
+  goalId: string;
+  member: string;
+}
+
+export type ActivityItem =
+  | DepositActivity
+  | GoalCreatedActivity
+  | DepositAttachmentActivity
+  | MemberInviteActivity
+  | MemberStatusActivity;
+
+export interface ActivityResponse {
+  userAddress: string;
+  startBlock: number;
+  endBlock: number;
+  limit: number;
+  activities: ActivityItem[];
+}
+
 // Utility types
 export type ApiResponse<T> = T | ErrorResponse;
 
