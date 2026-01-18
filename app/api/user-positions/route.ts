@@ -528,11 +528,36 @@ async function handleJoinGoal(request: NextRequest) {
 
 async function handleAllocate(request: NextRequest) {
   const body = await request.json();
-  const { asset, userAddress, amount, txHash, targetGoalId } = body;
+  const { asset, userAddress, amount, txHash, targetGoalId, providerPayload } = body;
+  const providerTxCode = (() => {
+    if (!providerPayload || typeof providerPayload !== "object") {
+      return undefined;
+    }
+    const payload = providerPayload as {
+      transaction_code?: unknown;
+      data?: { transaction_code?: unknown };
+    };
+    if (typeof payload.transaction_code === "string") {
+      return payload.transaction_code;
+    }
+    if (typeof payload.data?.transaction_code === "string") {
+      return payload.data.transaction_code;
+    }
+    return undefined;
+  })();
 
-  if (!asset || !userAddress || !amount || !txHash) {
+  if (!asset || !userAddress || !amount || !txHash || !providerPayload) {
     return NextResponse.json(
-      { error: "Missing required fields: asset, userAddress, amount, txHash" },
+      { error: "Missing required fields: asset, userAddress, amount, txHash, providerPayload" },
+      { status: 400 }
+    );
+  }
+
+  if (!providerTxCode) {
+    return NextResponse.json(
+      {
+        error: "Missing provider transaction code. providerPayload must include transaction_code",
+      },
       { status: 400 }
     );
   }

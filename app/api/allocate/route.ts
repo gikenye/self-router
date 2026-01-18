@@ -24,41 +24,84 @@ import type {
 } from "../../../lib/types";
 import { getMetaGoalsCollection } from "../../../lib/database";
 import { GoalSyncService } from "../../../lib/services/goal-sync.service";
+import { logger } from "../../../lib/logger";
 
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<AllocateResponse | ErrorResponse>> {
   try {
-    console.log('💰 Allocate API called');
-    console.log('🌐 Request details:', {
+    logger.info("💰 Allocate API called");
+    logger.info("🌐 Request details", {
       method: request.method,
       url: request.url,
       contentType: request.headers.get('content-type'),
       timestamp: new Date().toISOString()
     });
     const body: AllocateRequest & { metaGoalId?: string; tokenSymbol?: string } = await request.json();
-    console.log('📊 RAW Allocate request body:', JSON.stringify(body, null, 2));
-    const { asset, tokenSymbol, userAddress, amount, txHash, targetGoalId, metaGoalId } = body;
+    logger.debug("📊 RAW Allocate request body", { body });
+    const {
+      asset,
+      tokenSymbol,
+      userAddress,
+      amount,
+      txHash,
+      targetGoalId,
+      metaGoalId,
+      providerPayload,
+    } = body;
     // Handle both asset and tokenSymbol for backward compatibility
     const finalAsset = asset || tokenSymbol;
-    console.log('🔍 Extracted fields:', {
+    const providerTxCode = (() => {
+      if (!providerPayload || typeof providerPayload !== "object") {
+        return undefined;
+      }
+      const payload = providerPayload as {
+        transaction_code?: unknown;
+        data?: { transaction_code?: unknown };
+      };
+      if (typeof payload.transaction_code === "string") {
+        return payload.transaction_code;
+      }
+      if (typeof payload.data?.transaction_code === "string") {
+        return payload.data.transaction_code;
+      }
+      return undefined;
+    })();
+    logger.debug("🔍 Extracted fields", {
       asset,
       tokenSymbol,
       finalAsset,
       userAddress,
       amount,
       txHash,
+      providerTxCode,
       targetGoalId,
       targetGoalIdType: typeof targetGoalId,
       targetGoalIdValue: targetGoalId
     });
 
     // Validate required fields
-    if (!finalAsset || !userAddress || !amount || !txHash) {
-      console.error('❌ Missing required fields:', { finalAsset, userAddress, amount, txHash });
+    if (!finalAsset || !userAddress || !amount || !txHash || !providerPayload) {
+      logger.error("❌ Missing required fields", {
+        finalAsset,
+        userAddress,
+        amount,
+        txHash,
+        providerPayload,
+      });
       return NextResponse.json(
         {
-          error: "Missing required fields: asset/tokenSymbol, userAddress, amount, txHash",
+          error: "Missing required fields: asset/tokenSymbol, userAddress, amount, txHash, providerPayload",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!providerTxCode) {
+      logger.error("❌ Missing provider transaction code", { providerPayload });
+      return NextResponse.json(
+        {
+          error: "Missing provider transaction code. providerPayload must include transaction_code",
         },
         { status: 400 }
       );
@@ -66,7 +109,7 @@ export async function POST(
 
     // Validate user address
     if (!isValidAddress(userAddress)) {
-      console.error('❌ Invalid userAddress:', userAddress);
+      logger.error("❌ Invalid userAddress", { userAddress });
       return NextResponse.json(
         { error: "Invalid userAddress" },
         { status: 400 }
@@ -89,7 +132,12 @@ export async function POST(
       );
     }
     
-    console.log('✅ Processing allocation for:', { finalAsset, userAddress, amount: normalizedAmount, targetGoalId });
+    logger.info("✅ Processing allocation for", {
+      finalAsset,
+      userAddress,
+      amount: normalizedAmount,
+      targetGoalId,
+    });
 
     // Validate asset
     const vaultConfig = VAULTS[finalAsset];
@@ -108,7 +156,7 @@ export async function POST(
 
     // Wait for transaction receipt
     const receipt = await waitForTransactionReceipt(provider, txHash);
-    console.log("Transaction receipt:", receipt);
+    logger.debug("Transaction receipt", { receipt });
     if (!receipt || !receipt.status) {
       return NextResponse.json(
         { error: "Transaction not found or failed" },
@@ -118,18 +166,18 @@ export async function POST(
 
     // Verify transfer to vault
     const transferTopic = ethers.id("Transfer(address,address,uint256)");
-    console.log("Looking for transfer topic:", transferTopic);
-    console.log("Vault config:", vaultConfig);
+    logger.debug("Looking for transfer topic", { transferTopic });
+    logger.debug("Vault config", { vaultConfig });
     const vaultTransfer = receipt.logs.find((log: ethers.Log) => {
-      console.log("Checking log:", log.address, log.topics[0]);
+      logger.debug("Checking log", { address: log.address, topic: log.topics[0] });
       if (log.topics[0] !== transferTopic) return false;
       if (log.address.toLowerCase() !== vaultConfig.asset.toLowerCase())
         return false;
       const to = ethers.getAddress("0x" + log.topics[2].slice(26));
-      console.log("Parsed to address:", to);
+      logger.debug("Parsed to address", { to });
       return to.toLowerCase() === vaultConfig.address.toLowerCase();
     });
-    console.log("Vault transfer found:", !!vaultTransfer);
+    logger.info("Vault transfer found", { found: !!vaultTransfer });
 
     if (!vaultTransfer) {
       return NextResponse.json(
@@ -138,22 +186,33 @@ export async function POST(
       );
     }
 
-    // Parse deposit event from the original transaction
     const vault = new ethers.Contract(
       vaultConfig.address,
       VAULT_ABI,
       backendWallet
     );
-    const depositEvent = findEventInLogs(receipt.logs, vault, "Deposited");
-    if (!depositEvent) {
+
+    // Allocate the onramp deposit from the vault and parse the on-chain event.
+    const allocateTx = await vault.allocateOnrampDeposit(
+      userAddress,
+      BigInt(normalizedAmount),
+      txHash
+    );
+    const allocateReceipt = await allocateTx.wait();
+    const onrampDepositEvent = findEventInLogs(
+      allocateReceipt.logs,
+      vault,
+      "OnrampDeposit"
+    );
+    if (!onrampDepositEvent) {
       return NextResponse.json(
-        { error: "Failed to parse deposit event" },
+        { error: "Failed to parse onramp deposit event from allocation tx" },
         { status: 500 }
       );
     }
 
-    const depositId = depositEvent.args.depositId.toString();
-    const shares = depositEvent.args.shares.toString();
+    const depositId = onrampDepositEvent.args.depositId.toString();
+    const shares = onrampDepositEvent.args.shares.toString();
 
     // Handle goal attachment
     let attachedGoalId: bigint = BigInt(0);
@@ -170,13 +229,13 @@ export async function POST(
       );
 
       // Use target goal if specified, otherwise default to quicksave
-      console.log('🎯 Goal selection logic:', {
-        hasTargetGoalId: !!targetGoalId,
-        hasMetaGoalId: !!metaGoalId,
-        targetGoalIdValue: targetGoalId,
-        targetGoalIdType: typeof targetGoalId,
-        willUseTargetGoal: !!targetGoalId || !!metaGoalId
-      });
+    logger.debug("🎯 Goal selection logic", {
+      hasTargetGoalId: !!targetGoalId,
+      hasMetaGoalId: !!metaGoalId,
+      targetGoalIdValue: targetGoalId,
+      targetGoalIdType: typeof targetGoalId,
+      willUseTargetGoal: !!targetGoalId || !!metaGoalId
+    });
       
       // Handle meta-goal routing first
       if (metaGoalId && !targetGoalId) {
@@ -187,24 +246,36 @@ export async function POST(
           if (metaGoal) {
             const onChainGoalId = metaGoal.onChainGoals[finalAsset as VaultAsset];
             if (onChainGoalId) {
-              console.log(`🎯 Meta-goal ${metaGoalId} resolved to on-chain goal ${onChainGoalId} for ${finalAsset}`);
+              logger.info("🎯 Meta-goal resolved to on-chain goal", {
+                metaGoalId,
+                onChainGoalId,
+                asset: finalAsset,
+              });
               // Validate the resolved goal exists and matches vault
               const resolvedGoal = await goalManagerRead.goals(onChainGoalId);
               if (resolvedGoal.id.toString() !== "0" && 
                   resolvedGoal.vault.toLowerCase() === vaultConfig.address.toLowerCase()) {
                 attachedGoalId = BigInt(onChainGoalId);
-                console.log(`✅ Using meta-goal resolved target: ${onChainGoalId}`);
+                logger.info("✅ Using meta-goal resolved target", { onChainGoalId });
               } else {
-                console.log(`❌ Meta-goal resolved goal ${onChainGoalId} invalid, falling back to quicksave`);
+                logger.warn("❌ Meta-goal resolved goal invalid, falling back to quicksave", {
+                  onChainGoalId,
+                });
               }
             } else {
-              console.log(`❌ Meta-goal ${metaGoalId} has no on-chain goal for ${finalAsset}, falling back to quicksave`);
+              logger.warn("❌ Meta-goal has no on-chain goal for asset, falling back to quicksave", {
+                metaGoalId,
+                asset: finalAsset,
+              });
             }
           } else {
-            console.log(`❌ Meta-goal ${metaGoalId} not found, falling back to quicksave`);
+            logger.warn("❌ Meta-goal not found, falling back to quicksave", { metaGoalId });
           }
         } catch (error) {
-          console.log(`❌ Error resolving meta-goal ${metaGoalId}:`, error instanceof Error ? error.message : String(error));
+          logger.warn("❌ Error resolving meta-goal", {
+            metaGoalId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
       
@@ -213,19 +284,31 @@ export async function POST(
         try {
           const targetGoal = await goalManagerRead.goals(targetGoalId);
           if (targetGoal.id.toString() === "0") {
-            console.log(`❌ Target goal ${targetGoalId} does not exist, falling back to quicksave`);
+            logger.warn("❌ Target goal does not exist, falling back to quicksave", {
+              targetGoalId,
+            });
           } else if (targetGoal.vault.toLowerCase() !== vaultConfig.address.toLowerCase()) {
-            console.log(`❌ Target goal ${targetGoalId} vault mismatch: expected ${vaultConfig.address}, got ${targetGoal.vault}. Falling back to quicksave`);
+            logger.warn("❌ Target goal vault mismatch, falling back to quicksave", {
+              targetGoalId,
+              expectedVault: vaultConfig.address,
+              actualVault: targetGoal.vault,
+            });
           } else {
             attachedGoalId = BigInt(targetGoalId);
-            console.log(`✅ Using target goal: ${targetGoalId} (converted to BigInt: ${attachedGoalId})`);
+            logger.info("✅ Using target goal", {
+              targetGoalId,
+              attachedGoalId: attachedGoalId.toString(),
+            });
             
             // Lazy sync: ensure goal exists in database
             const syncService = new GoalSyncService(provider);
             await syncService.getGoalWithFallback(targetGoalId);
           }
         } catch (error) {
-          console.log(`❌ Error validating target goal ${targetGoalId}:`, error instanceof Error ? error.message : String(error));
+          logger.warn("❌ Error validating target goal", {
+            targetGoalId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
       
@@ -261,12 +344,17 @@ export async function POST(
                   { metaGoalId: expandableGoal.metaGoalId },
                   { $set: { onChainGoals: expandableGoal.onChainGoals, updatedAt: new Date().toISOString() } }
                 );
-                console.log(`✅ Auto-expanded meta-goal ${expandableGoal.metaGoalId} to include ${finalAsset}`);
+                logger.info("✅ Auto-expanded meta-goal to include asset", {
+                  metaGoalId: expandableGoal.metaGoalId,
+                  asset: finalAsset,
+                });
               }
             }
           }
         } catch (error) {
-          console.log('Auto-expansion failed, falling back to quicksave:', error);
+          logger.warn("Auto-expansion failed, falling back to quicksave", {
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
         
         if (attachedGoalId === BigInt(0)) {
@@ -293,11 +381,13 @@ export async function POST(
               attachedGoalId = goalEvent.args.goalId;
             }
           }
-          console.log(`✅ Using quicksave goal: ${attachedGoalId}`);
+          logger.info("✅ Using quicksave goal", {
+            attachedGoalId: attachedGoalId.toString(),
+          });
         }
       }
       
-      console.log('🔗 Final goal attachment decision:', {
+      logger.debug("🔗 Final goal attachment decision", {
         selectedGoalId: attachedGoalId.toString(),
         wasTargetGoalProvided: !!targetGoalId,
         originalTargetGoalId: targetGoalId
@@ -316,8 +406,7 @@ export async function POST(
                 [depositId]
               );
               await attachTx.wait();
-              console.log(`✅ Successfully attached deposit ${depositId} to goal ${attachedGoalId}`);
-              console.log('📋 Attachment summary:', {
+              logger.info("✅ Successfully attached deposit to goal", {
                 depositId,
                 goalId: attachedGoalId.toString(),
                 userAddress,
@@ -327,25 +416,32 @@ export async function POST(
             } catch (attachError) {
               const errorMsg = attachError instanceof Error ? attachError.message : String(attachError);
               if (errorMsg.includes("already unlocked") || errorMsg.includes("Not found")) {
-                console.log(`Cannot attach deposit ${depositId}: ${errorMsg}`);
+                logger.warn("Cannot attach deposit", {
+                  depositId,
+                  error: errorMsg,
+                });
               } else {
                 throw attachError;
               }
             }
           } else {
-            console.log(`Goal ${attachedGoalId} not found, skipping attachment`);
+            logger.warn("Goal not found, skipping attachment", {
+              goalId: attachedGoalId.toString(),
+            });
             attachedGoalId = BigInt(0);
           }
         } catch (goalError) {
-          console.log(`Goal ${attachedGoalId} validation failed:`, goalError instanceof Error ? goalError.message : String(goalError));
+          logger.warn("Goal validation failed", {
+            goalId: attachedGoalId.toString(),
+            error: goalError instanceof Error ? goalError.message : String(goalError),
+          });
           attachedGoalId = BigInt(0);
         }
       }
     } catch (error) {
-      console.log(
-        "Failed to handle goal attachment, skipping:",
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.warn("Failed to handle goal attachment, skipping", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       attachedGoalId = BigInt(0);
     }
 
@@ -385,7 +481,9 @@ export async function POST(
           goalCompleted = progressPercent >= 100;
         }
       } catch (error) {
-        console.log('Failed to check goal completion:', error);
+        logger.warn("Failed to check goal completion", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -401,13 +499,13 @@ export async function POST(
       metaGoalId: responseMetaGoalId,
     };
     
-    console.log('📤 Allocate response data:', JSON.stringify(response, null, 2));
+    logger.info("📤 Allocate response data", { response });
     return NextResponse.json(response);
   } catch (error) {
-    console.error('❌ Allocation error:', {
+    logger.error("❌ Allocation error", {
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      requestBody: request.body
+      requestBody: request.body,
     });
     return NextResponse.json(
       {
