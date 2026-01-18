@@ -20,6 +20,27 @@ function shouldLog(level: LogLevel) {
   return levelOrder[level] >= levelOrder[minLevel];
 }
 
+function safeStringify(value: unknown) {
+  try {
+    const seen = new WeakSet<object>();
+    return JSON.stringify(value, (_key, val) => {
+      if (typeof val === "bigint") {
+        return val.toString();
+      }
+      if (typeof val === "object" && val !== null) {
+        const obj = val as object;
+        if (seen.has(obj)) {
+          return "[Circular]";
+        }
+        seen.add(obj);
+      }
+      return val;
+    });
+  } catch (_error) {
+    return JSON.stringify({ error: "Failed to serialize log payload" });
+  }
+}
+
 function log(level: LogLevel, message: string, meta?: Record<string, unknown>) {
   if (!shouldLog(level)) {
     return;
@@ -30,9 +51,9 @@ function log(level: LogLevel, message: string, meta?: Record<string, unknown>) {
       level,
       message,
       timestamp: new Date().toISOString(),
-      ...meta,
+      meta,
     };
-    const serialized = JSON.stringify(payload);
+    const serialized = safeStringify(payload);
     if (level === "debug") {
       console.info(serialized);
     } else {
