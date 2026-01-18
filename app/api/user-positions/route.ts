@@ -529,10 +529,26 @@ async function handleJoinGoal(request: NextRequest) {
 async function handleAllocate(request: NextRequest) {
   const body = await request.json();
   const { asset, userAddress, amount, txHash, targetGoalId, providerPayload } = body;
+
+  if (!asset || !userAddress || !amount || !txHash || !providerPayload) {
+    return NextResponse.json(
+      { error: "Missing required fields: asset, userAddress, amount, txHash, providerPayload" },
+      { status: 400 }
+    );
+  }
+
+  if (
+    providerPayload === null ||
+    typeof providerPayload !== "object" ||
+    Array.isArray(providerPayload)
+  ) {
+    return NextResponse.json(
+      { error: "Invalid providerPayload: expected object" },
+      { status: 400 }
+    );
+  }
+
   const providerTxCode = (() => {
-    if (!providerPayload || typeof providerPayload !== "object") {
-      return undefined;
-    }
     const payload = providerPayload as {
       transaction_code?: unknown;
       data?: { transaction_code?: unknown };
@@ -545,13 +561,6 @@ async function handleAllocate(request: NextRequest) {
     }
     return undefined;
   })();
-
-  if (!asset || !userAddress || !amount || !txHash || !providerPayload) {
-    return NextResponse.json(
-      { error: "Missing required fields: asset, userAddress, amount, txHash, providerPayload" },
-      { status: 400 }
-    );
-  }
 
   if (!providerTxCode) {
     return NextResponse.json(
